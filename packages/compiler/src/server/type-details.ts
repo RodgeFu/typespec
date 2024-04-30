@@ -86,6 +86,24 @@ export function getParameterDocumentation(program: Program, type: Type): Map<str
 }
 
 /** @internal */
+export function getPropertyDocumentation(program: Program, type: Type): Map<string, string> {
+  const map = new Map<string, string>();
+  if (type.kind !== "Model") {
+    compilerAssert(false, "Model type is expected to get property documentation");
+    return map;
+  }
+  for (const [key, prop] of type.properties) {
+    const doc =
+      prop.node.docs
+        ?.flatMap((d) => d.content)
+        .map((d) => d.text)
+        .join(" ") ?? "";
+    map.set(key, doc);
+  }
+  return map;
+}
+
+/** @internal */
 export function getTemplateParameterDocumentation(
   node: Node & TemplateDeclarationNode
 ): Map<string, string> {

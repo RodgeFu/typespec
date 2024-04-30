@@ -50,7 +50,12 @@ import { resolveCodeFix } from "../core/code-fixes.js";
 import { compilerAssert, getSourceLocation } from "../core/diagnostics.js";
 import { formatTypeSpec } from "../core/formatter.js";
 import { getTypeName } from "../core/helpers/type-name-utils.js";
-import { ResolveModuleHost, resolveModule } from "../core/index.js";
+import {
+  ModelExpressionNode,
+  ModelProperty,
+  ResolveModuleHost,
+  resolveModule,
+} from "../core/index.js";
 import { getPositionBeforeTrivia } from "../core/parser-utils.js";
 import { getNodeAtPosition, visitChildren } from "../core/parser.js";
 import { ensureTrailingDirectorySeparator, getDirectoryPath } from "../core/path-utils.js";
@@ -83,6 +88,7 @@ import { createFileSystemCache } from "./file-system-cache.js";
 import { getSymbolStructure } from "./symbol-structure.js";
 import {
   getParameterDocumentation,
+  getPropertyDocumentation,
   getSymbolDetails,
   getTemplateParameterDocumentation,
 } from "./type-details.js";
@@ -443,6 +449,8 @@ export function createServer(host: ServerHost): Server {
     }
     const { node, argumentIndex } = data;
     switch (node.kind) {
+      case SyntaxKind.ModelExpression:
+        return getSignatureHelpForModelExpression(program, node, argumentIndex);
       case SyntaxKind.TypeReference:
         return getSignatureHelpForTemplate(program, node, argumentIndex);
       case SyntaxKind.DecoratorExpression:
@@ -452,6 +460,102 @@ export function createServer(host: ServerHost): Server {
         const _assertNever: never = node;
         compilerAssert(false, "Unreachable");
     }
+  }
+
+  function getSignatureHelpForModelExpression(
+    program: Program,
+    modelNode: ModelExpressionNode,
+    propIndex: number
+  ) {
+    if (modelNode.parent?.kind === SyntaxKind.DecoratorExpression) {
+      const decNode = modelNode.parent;
+      const sym = program.checker.resolveIdentifier(
+        decNode.target.kind === SyntaxKind.MemberExpression ? decNode.target.id : decNode.target
+      );
+      if (!sym) {
+        return undefined;
+      }
+
+      const decoratorDeclNode: DecoratorDeclarationStatementNode | undefined =
+        sym.declarations.find(
+          (x): x is DecoratorDeclarationStatementNode =>
+            x.kind === SyntaxKind.DecoratorDeclarationStatement
+        );
+      if (decoratorDeclNode === undefined) {
+        return undefined;
+      }
+
+      const argIndex = decNode.arguments.findIndex((arg) => arg === modelNode);
+      const decType = program.checker.getTypeForNode(decoratorDeclNode);
+      compilerAssert(decType.kind === "Decorator", "Expected type to be a decorator.");
+      if (argIndex >= decType.parameters.length) {
+        return undefined;
+      }
+
+      const modelRef = decType.parameters[argIndex];
+      if (modelRef.type.kind !== "Model") {
+        return undefined;
+      }
+      // TODO: handle named parameter?
+      // TODO: handle spread/extended properties
+      const modelType = modelRef.type;
+
+      if (modelType.properties.size <= propIndex) {
+        return undefined;
+      }
+
+      const curProp = modelNode.properties[propIndex];
+      if (curProp.kind === SyntaxKind.ModelSpreadProperty) {
+        // CAN WE use spread properties here?
+        return undefined;
+      }
+      const curPropName = curProp.id.sv;
+      let curPropIndex = -1;
+
+      const propDocs = getPropertyDocumentation(program, modelType);
+      const pi: ParameterInformation[] = [];
+
+      let index = 0;
+      // TODO: does this include spread properties and inherit ones?
+      modelType.properties.forEach((m: ModelProperty, k: string) => {
+        const info: ParameterInformation = {
+          // prettier-ignore
+          label: `${m.name}${m.optional ? "?" : ""}: ${getTypeName(m.type)}`,
+        };
+        const doc = propDocs.get(m.name);
+        if (doc) {
+          info.documentation = { kind: MarkupKind.Markdown, value: doc };
+        }
+        if (m.name === curPropName) curPropIndex = index;
+        index++;
+        pi.push(info);
+      });
+
+      const help: SignatureHelp = {
+        signatures: [
+          {
+            label: `${modelType.name}${curPropIndex >= 0 ? "." + pi[curPropIndex].label : ""}`,
+            parameters: pi,
+            activeParameter: curPropIndex,
+          },
+        ],
+        activeSignature: 0,
+        activeParameter: 0,
+      };
+
+      const doc = getSymbolDetails(program, sym, {
+        includeSignature: false,
+        includeParameterTags: false,
+      });
+      if (doc) {
+        help.signatures[0].documentation = { kind: MarkupKind.Markdown, value: doc };
+      }
+
+      return help;
+    } else {
+      compilerAssert(false, "Unreachable");
+    }
+    return undefined;
   }
 
   function getSignatureHelpForTemplate(
@@ -982,7 +1086,8 @@ export function createServer(host: ServerHost): Server {
 type SignatureHelpNode =
   | DecoratorExpressionNode
   | AugmentDecoratorStatementNode
-  | TypeReferenceNode;
+  | TypeReferenceNode
+  | ModelExpressionNode;
 
 function getSignatureHelpNodeAtPosition(
   script: TypeSpecScriptNode,
@@ -998,6 +1103,11 @@ function getSignatureHelpNodeAtPosition(
     position,
     (n): n is SignatureHelpNode => {
       switch (n.kind) {
+        case SyntaxKind.ModelExpression:
+          // when user filling a model expression for a decorator's parameter
+          // we should be able to provide signature help for the model expression
+          // according to the decorator's definition
+          return n.parent?.kind === SyntaxKind.DecoratorExpression;
         case SyntaxKind.DecoratorExpression:
         case SyntaxKind.AugmentDecoratorStatement:
         case SyntaxKind.TypeReference:
@@ -1048,7 +1158,9 @@ function getSignatureHelpArgumentIndex(
   const args =
     node.kind === SyntaxKind.AugmentDecoratorStatement
       ? [node.targetType, ...node.arguments]
-      : node.arguments;
+      : node.kind === SyntaxKind.ModelExpression
+        ? node.properties
+        : node.arguments;
 
   // Find the first argument that ends after the position. We don't look at
   // the argument start position since the cursor might be in leading
