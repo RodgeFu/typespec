@@ -119,6 +119,7 @@ export enum SemanticTokenKind {
   Number,
   Regexp,
   Operator,
+  Decorator,
 
   DocCommentTag,
 }

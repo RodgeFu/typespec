@@ -195,7 +195,7 @@ export function getSemanticTokens(ast: TypeSpecScriptNode): SemanticToken[] {
   function classifyNode(node: Node) {
     switch (node.kind) {
       case SyntaxKind.DirectiveExpression:
-        classify(node.target, SemanticTokenKind.Keyword);
+        classify(node.target, SemanticTokenKind.Decorator);
         break;
       case SyntaxKind.TemplateParameterDeclaration:
         classify(node.id, SemanticTokenKind.TypeParameter);
