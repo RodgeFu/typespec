@@ -37,6 +37,10 @@
       "types": "./dist/src/core/module-resolver.d.ts",
       "default": "./dist/src/core/module-resolver.js"
     },
+    "./path-utils": {
+      "types": "./dist/src/core/path-utils.d.ts",
+      "default": "./dist/src/core/path-utils.js"
+    },
     "./emitter-framework": {
       "types": "./dist/src/emitter-framework/index.d.ts",
       "default": "./dist/src/emitter-framework/index.js"

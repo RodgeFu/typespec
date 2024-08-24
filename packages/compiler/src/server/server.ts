@@ -127,6 +127,10 @@ function main() {
   connection.onSignatureHelp(profile(s.getSignatureHelp));
   connection.onCodeAction(profile(s.getCodeActions));
   connection.onExecuteCommand(profile(s.executeCommand));
+  connection.onRequest("custom/requestProgram", profile(s.onRequest));
+  connection.onRequest("custom/version", profile(s.onVersion));
+  connection.onRequest("custom/compileContext", profile(s.onGetCompileContext));
+  connection.onRequest("custom/compile/has-error", profile(s.onRequestTryCompile));
   connection.languages.semanticTokens.on(profile(s.buildSemanticTokens));
 
   documents.onDidChangeContent(profile(s.checkChange));

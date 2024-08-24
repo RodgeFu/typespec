@@ -47,6 +47,7 @@ import {
   EmitContext,
   EmitterFunc,
   Entity,
+  JSONSchemaType,
   JsSourceFileNode,
   LibraryInstance,
   LibraryMetadata,
@@ -128,6 +129,7 @@ interface EmitterRef {
   metadata: LibraryMetadata;
   emitterOutputDir: string;
   options: Record<string, unknown>;
+  optionsSchema?: JSONSchemaType<unknown>;
 }
 
 interface Validator {
@@ -649,6 +651,7 @@ export async function compile(
         metadata,
         emitterOutputDir,
         options: emitterOptions,
+        optionsSchema: entrypoint.esmExports.$lib?.emitter?.options,
       };
     } else {
       program.reportDiagnostic(

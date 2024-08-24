@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import {
   CodeAction,
@@ -39,6 +42,7 @@ import {
   SignatureHelp,
   SignatureHelpParams,
   TextDocumentChangeEvent,
+  TextDocumentIdentifier,
   TextDocumentSyncKind,
   TextEdit,
   Diagnostic as VSDiagnostic,
@@ -50,7 +54,7 @@ import { resolveCodeFix } from "../core/code-fixes.js";
 import { compilerAssert, getSourceLocation } from "../core/diagnostics.js";
 import { formatTypeSpec } from "../core/formatter.js";
 import { getEntityName, getTypeName } from "../core/helpers/type-name-utils.js";
-import { ResolveModuleHost, resolveModule } from "../core/index.js";
+import { CompilerOptions, ResolveModuleHost, resolveModule } from "../core/index.js";
 import { getPositionBeforeTrivia } from "../core/parser-utils.js";
 import { getNodeAtPosition, getNodeAtPositionDetail, visitChildren } from "../core/parser.js";
 import { ensureTrailingDirectorySeparator, getDirectoryPath } from "../core/path-utils.js";
@@ -66,15 +70,17 @@ import {
   Diagnostic,
   DiagnosticTarget,
   IdentifierNode,
+  NoTarget,
   Node,
   PositionDetail,
   SourceFile,
+  SourceLocation,
   SyntaxKind,
   TextRange,
   TypeReferenceNode,
   TypeSpecScriptNode,
 } from "../core/types.js";
-import { getNormalizedRealPath, resolveTspMain } from "../utils/misc.js";
+import { getNormalizedRealPath, resolveTspMain, typespecVersion } from "../utils/misc.js";
 import { getSemanticTokens } from "./classify.js";
 import { createCompileService } from "./compile-service.js";
 import { resolveCompletion } from "./completion.js";
@@ -88,6 +94,7 @@ import {
   getTemplateParameterDocumentation,
 } from "./type-details.js";
 import {
+  CompileContext,
   CompileResult,
   SemanticTokenKind,
   Server,
@@ -154,6 +161,10 @@ export function createServer(host: ServerHost): Server {
     getDocumentSymbols,
     getCodeActions,
     executeCommand,
+    onVersion,
+    onRequest,
+    onGetCompileContext,
+    onRequestTryCompile,
     log,
   };
 
@@ -321,6 +332,84 @@ export function createServer(host: ServerHost): Server {
         });
       }
     }
+  }
+
+  async function onRequestTryCompile(param: {
+    doc: TextDocumentIdentifier;
+    additionalOptions?: CompilerOptions;
+  }): Promise<boolean> {
+    const { doc, additionalOptions } = param;
+    // diagnostics will be sent back in compile if there is any
+    const result = await compileService.compile(doc, additionalOptions);
+
+    if (!result) {
+      return false;
+    }
+
+    return result.program.hasError();
+  }
+
+  async function onGetCompileContext(doc: TextDocumentIdentifier): Promise<CompileContext> {
+    return compileService.getCompileContext(doc);
+  }
+
+  async function onVersion(): Promise<string> {
+    return typespecVersion as string;
+  }
+
+  async function onRequest(
+    doc: TextDocumentIdentifier
+  ): Promise<Program | string | Record<string, string> | undefined> {
+    const tempDir = os.tmpdir();
+    const realTempDir = fs.realpathSync(tempDir);
+    const uid = crypto.randomUUID();
+    const subDir = path.join(realTempDir, uid);
+    fs.mkdirSync(subDir);
+
+    const option: CompilerOptions = {
+      options: {
+        ["@typespec/openapi3"]: {
+          "emitter-output-dir": subDir,
+        },
+      },
+      outputDir: subDir,
+      emit: ["@typespec/openapi3"],
+      noEmit: false,
+    };
+
+    const result = await compileService.compile(doc, option);
+    const files: Record<string, string> = {};
+    const isSourceLocation = (obj: any): obj is SourceLocation => {
+      return obj && "file" in obj;
+    };
+    files["diagnostics"] = JSON.stringify(
+      result?.program.diagnostics.map((x) => {
+        let target = undefined;
+        if (x.target && x.target !== NoTarget && isSourceLocation(x.target)) {
+          target = x.target;
+        }
+
+        return {
+          message: x.message,
+          code: x.code,
+          severity: x.severity,
+          path: target?.file.path,
+          text: target?.file.text,
+          pos: target?.pos,
+          end: target?.end,
+        };
+      }),
+      null,
+      2
+    );
+    fs.readdirSync(subDir).forEach((file) => {
+      files[file] = fs.readFileSync(`${subDir}/${file}`, "utf8");
+    });
+    try {
+      // make it async
+      fs.rmdirSync(subDir, { recursive: true });
+    } catch (e) {}
+    return files;
   }
 
   async function getDocumentSymbols(params: DocumentSymbolParams): Promise<DocumentSymbol[]> {

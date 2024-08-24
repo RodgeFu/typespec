@@ -24,7 +24,7 @@ import { doIO, loadFile, resolveTspMain } from "../utils/misc.js";
 import { serverOptions } from "./constants.js";
 import { FileService } from "./file-service.js";
 import { FileSystemCache } from "./file-system-cache.js";
-import { CompileResult, ServerHost, ServerLog } from "./types.js";
+import { CompileContext, CompileResult, ServerHost, ServerLog } from "./types.js";
 import { UpdateManger } from "./update-manager.js";
 
 /**
@@ -40,7 +40,16 @@ export interface CompileService {
    * @param document The document to compile. This is not necessarily the entrypoint, compile will try to guess which entrypoint to compile to include this one.
    * @returns the compiled result or undefined if compilation was aborted.
    */
-  compile(document: TextDocument | TextDocumentIdentifier): Promise<CompileResult | undefined>;
+  compile(
+    document: TextDocument | TextDocumentIdentifier,
+    additionalOptions?: CompilerOptions
+  ): Promise<CompileResult | undefined>;
+
+  /**
+   * Get the context of compilation for the given doc.
+   * @param document The document to get the compilation context for.
+   */
+  getCompileContext(document: TextDocument | TextDocumentIdentifier): Promise<CompileContext>;
 
   /**
    * Load the AST for the given document.
@@ -77,7 +86,7 @@ export function createCompileService({
   const eventListeners = new Map<string, (...args: unknown[]) => void>();
   const updated = new UpdateManger((document) => compile(document));
 
-  return { compile, getScript, on, notifyChange };
+  return { compile, getScript, getCompileContext, on, notifyChange };
 
   function on(event: string, listener: (...args: any[]) => void) {
     eventListeners.set(event, listener);
@@ -94,18 +103,33 @@ export function createCompileService({
     updated.scheduleUpdate(document);
   }
 
-  async function compile(
+  async function getCompileContext(
     document: TextDocument | TextDocumentIdentifier
+  ): Promise<CompileContext> {
+    const path = await fileService.getPath(document);
+    return getCompileContextInternal(path);
+  }
+
+  async function getCompileContextInternal(path: string): Promise<CompileContext> {
+    const mainFile = await getMainFileForDocument(path);
+    const configFile = await getConfigFile(mainFile);
+    const config = await getConfig(mainFile, configFile);
+    return { mainFile, configFile, config };
+  }
+
+  async function compile(
+    document: TextDocument | TextDocumentIdentifier,
+    additionalOptions?: CompilerOptions
   ): Promise<CompileResult | undefined> {
     const path = await fileService.getPath(document);
-    const mainFile = await getMainFileForDocument(path);
-    const config = await getConfig(mainFile);
+    const { mainFile, config } = await getCompileContextInternal(path);
     log({ level: "debug", message: `config resolved`, detail: config });
 
     const [optionsFromConfig, _] = resolveOptionsFromConfig(config, { cwd: path });
     const options: CompilerOptions = {
       ...optionsFromConfig,
       ...serverOptions,
+      ...(additionalOptions ?? {}),
     };
     log({ level: "debug", message: `compiler options resolved`, detail: options });
 
@@ -166,11 +190,15 @@ export function createCompileService({
     }
   }
 
-  async function getConfig(mainFile: string): Promise<TypeSpecConfig> {
+  async function getConfigFile(mainFile: string): Promise<string | undefined> {
     const entrypointStat = await compilerHost.stat(mainFile);
 
     const lookupDir = entrypointStat.isDirectory() ? mainFile : getDirectoryPath(mainFile);
-    const configPath = await findTypeSpecConfigPath(compilerHost, lookupDir, true);
+    return await findTypeSpecConfigPath(compilerHost, lookupDir, true);
+  }
+
+  async function getConfig(mainFile: string, configFile?: string): Promise<TypeSpecConfig> {
+    const configPath = configFile ?? (await getConfigFile(mainFile));
     if (!configPath) {
       log({
         level: "debug",

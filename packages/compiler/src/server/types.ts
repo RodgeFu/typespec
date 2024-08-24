@@ -37,7 +37,14 @@ import {
   WorkspaceFoldersChangeEvent,
 } from "vscode-languageserver";
 import { TextDocument, TextEdit } from "vscode-languageserver-textdocument";
-import type { CompilerHost, Program, SourceFile, TypeSpecScriptNode } from "../core/index.js";
+import { TypeSpecConfig } from "../config/types.js";
+import type {
+  CompilerHost,
+  CompilerOptions,
+  Program,
+  SourceFile,
+  TypeSpecScriptNode,
+} from "../core/index.js";
 
 export type ServerLogLevel = "trace" | "debug" | "info" | "warning" | "error";
 export interface ServerLog {
@@ -55,6 +62,12 @@ export interface ServerHost {
   readonly applyEdit: (
     paramOrEdit: ApplyWorkspaceEditParams | WorkspaceEdit
   ) => Promise<ApplyWorkspaceEditResult>;
+}
+
+export interface CompileContext {
+  readonly mainFile: string;
+  readonly configFile: string | undefined;
+  readonly config: TypeSpecConfig;
 }
 
 export interface CompileResult {
@@ -88,6 +101,15 @@ export interface Server {
   documentClosed(change: TextDocumentChangeEvent<TextDocument>): void;
   getCodeActions(params: CodeActionParams): Promise<CodeAction[]>;
   executeCommand(params: ExecuteCommandParams): Promise<void>;
+  onVersion(): Promise<string>;
+  onRequest(
+    doc: TextDocumentIdentifier
+  ): Promise<Program | string | Record<string, string> | undefined>;
+  onRequestTryCompile(param: {
+    doc: TextDocumentIdentifier;
+    additionalOptions?: CompilerOptions;
+  }): Promise<boolean>;
+  onGetCompileContext(doc: TextDocumentIdentifier): Promise<CompileContext>;
   log(log: ServerLog): void;
 }
 

@@ -9,7 +9,10 @@
     "sourceMap": false,
     "resolveJsonModule": true,
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "jsx":"react-jsx",
+    "allowSyntheticDefaultImports": true,
+    "resolvePackageJsonImports": true
   },
-  "include": ["rollup.config.ts", "src/**/*.ts", "test/**/*.ts"]
+  "include": ["rollup.config.ts", "src/**/*.ts", "test/**/*.ts", "src/webview/index.ts"]
 }

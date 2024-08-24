@@ -1,0 +1,115 @@
+@import "~bootstrap/scss/bootstrap.scss";
+
+[data-bs-theme="vscode"] {
+  --#{$prefix}body-color: var(--vscode-editor-foreground);
+  --#{$prefix}body-bg: var(--vscode-editor-background);
+  --#{$prefix}border-color: var(--vscode-tab-border);
+
+  .nav {
+    --#{$prefix}nav-link-color: var(--vscode-tab-inactiveForeground);
+    --#{$prefix}nav-link-hover-color: var(--vscode-tab-activeForeground);
+    --#{$prefix}nav-link-disabled-color: var(
+      --vscode---vscode-tab-unfocusedInactiveForeground
+    );
+  }
+
+  $tabs-height: 2.5rem;
+  $tabs-bottom-margin: 0.5rem;
+  .nav-tabs {
+    --#{$prefix}nav-tabs-link-hover-border-color: var(--vscode-tab-border);
+    --#{$prefix}nav-tabs-link-active-color: var(--vscode-tab-activeForeground);
+    --#{$prefix}nav-tabs-link-active-bg: var(--vscode-tab-activeBackground);
+
+    height: #{$tabs-height};
+    margin-bottom: #{$tabs-bottom-margin};
+  }
+
+  .tab-content {
+    height: calc(
+      100% - #{$tabs-height} - var(--#{$prefix}border-width) - #{$tabs-bottom-margin}
+    );
+    overflow: auto;
+    width: fit-content;
+  }
+
+  .accordion {
+    --#{$prefix}accordion-color: var(--vscode-menu-foreground);
+    --#{$prefix}accordion-bg: var(--vscode-menu-background);
+    --#{$prefix}accordion-active-color: var(--vscode-menu-selectionForeground);
+    --#{$prefix}accordion-active-bg: var(--vscode-menu-selectionBackground);
+    --#{$prefix}accordion-border-color: var(--vscode-menu-border);
+    // --#{$prefix}accordion-transition: #{$accordion-transition};
+    // --#{$prefix}accordion-border-width: #{$accordion-border-width};
+    // --#{$prefix}accordion-border-radius: #{$accordion-border-radius};
+    // --#{$prefix}accordion-inner-border-radius: #{$accordion-inner-border-radius};
+    // --#{$prefix}accordion-btn-padding-x: #{$accordion-button-padding-x};
+    // --#{$prefix}accordion-btn-padding-y: #{$accordion-button-padding-y};
+    --#{$prefix}accordion-btn-color: var(--#{$prefix}accordion-color);
+    --#{$prefix}accordion-btn-bg: var(--#{$prefix}accordion-bg);
+    // --#{$prefix}accordion-btn-icon: #{escape-svg($accordion-button-icon)};
+    // --#{$prefix}accordion-btn-icon-width: #{$accordion-icon-width};
+    // --#{$prefix}accordion-btn-icon-transform: #{$accordion-icon-transform};
+    // --#{$prefix}accordion-btn-icon-transition: #{$accordion-icon-transition};
+    // --#{$prefix}accordion-btn-active-icon: #{escape-svg(
+    //     $accordion-button-active-icon
+    //   )};
+    // --#{$prefix}accordion-btn-focus-box-shadow: #{$accordion-button-focus-box-shadow};
+    // --#{$prefix}accordion-body-padding-x: #{$accordion-body-padding-x};
+    // --#{$prefix}accordion-body-padding-y: #{$accordion-body-padding-y};
+  }
+  .accordion-header {
+    :hover {
+      background-color: var(--#{$prefix}accordion-active-bg);
+      color: var(--#{$prefix}accordion-active-color);
+    }
+  }
+
+  .btn-primary {
+    // --bs-btn-font-weight: 600;
+    --bs-btn-color: var(--vscode-button-foreground);
+    --bs-btn-bg: var(--vscode-button-background);
+    --bs-btn-border-color: var(--vscode-button-border);
+    --bs-btn-hover-color: var(--bs-btn-color);
+    --bs-btn-hover-bg: var(--vscode-button-hoverBackground);
+    --bs-btn-hover-border-color: var(--bs-btn-border-color);
+    --bs-btn-focus-shadow-rgb: var(--bd-violet-rgb);
+    --bs-btn-active-color: var(--vscode-button-secondaryForeground);
+    --bs-btn-active-bg: var(--vscode-button-secondaryBackground);
+    --bs-btn-active-border-color: var(--bs-btn-border-color);
+  }
+
+  .dropdown-menu {
+    //     --#{$prefix}dropdown-zindex: #{$zindex-dropdown};
+    // --#{$prefix}dropdown-min-width: #{$dropdown-min-width};
+    // --#{$prefix}dropdown-padding-x: #{$dropdown-padding-x};
+    // --#{$prefix}dropdown-padding-y: #{$dropdown-padding-y};
+    // --#{$prefix}dropdown-spacer: #{$dropdown-spacer};
+    //@include rfs($dropdown-font-size, --#{$prefix}dropdown-font-size);
+    --#{$prefix}dropdown-color: var(--vscode-menu-foreground);
+    --#{$prefix}dropdown-bg: var(--vscode-menu-background);
+    --#{$prefix}dropdown-border-color: var(--vscode-menu-border);
+    // --#{$prefix}dropdown-border-radius: #{$dropdown-border-radius};
+    // --#{$prefix}dropdown-border-width: #{$dropdown-border-width};
+    // --#{$prefix}dropdown-inner-border-radius: #{$dropdown-inner-border-radius};
+    --#{$prefix}dropdown-divider-bg: var(--#{$prefix}dropdown-bg);
+    // --#{$prefix}dropdown-divider-margin-y: #{$dropdown-divider-margin-y};
+    // --#{$prefix}dropdown-box-shadow: #{$dropdown-box-shadow};
+    --#{$prefix}dropdown-link-color: var(--vscode-menu-foreground);
+    --#{$prefix}dropdown-link-hover-color: var(
+      --vscode-menu-selectionForeground
+    );
+    --#{$prefix}dropdown-link-hover-bg: var(--vscode-menu-selectionBackground);
+    --#{$prefix}dropdown-link-active-color: var(
+      --vscode-menu-selectionForeground
+    );
+    --#{$prefix}dropdown-link-active-bg: var(--vscode-menu-selectionBackground);
+    --#{$prefix}dropdown-link-disabled-color: var(--vscode-disabledForeground);
+    // --#{$prefix}dropdown-item-padding-x: #{$dropdown-item-padding-x};
+    // --#{$prefix}dropdown-item-padding-y: #{$dropdown-item-padding-y};
+    --#{$prefix}dropdown-header-color: var(
+      --vscode-menubar-selectionForeground
+    );
+    // --#{$prefix}dropdown-header-padding-x: #{$dropdown-header-padding-x};
+    // --#{$prefix}dropdown-header-padding-y: #{$dropdown-header-padding-y};
+  }
+}
