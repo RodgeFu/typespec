@@ -1,3 +1,4 @@
+import { dirname } from "path";
 import { DiagnosticSeverity, Range, TextDocumentIdentifier } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import {
@@ -40,7 +41,7 @@ export interface CompileService {
    * @param document The document to compile. This is not necessarily the entrypoint, compile will try to guess which entrypoint to compile to include this one.
    * @returns the compiled result or undefined if compilation was aborted.
    */
-  compile(document: TextDocument | TextDocumentIdentifier): Promise<CompileResult | undefined>;
+  compile(document: TextDocument | TextDocumentIdentifier, additionalOptions?: CompilerOptions): Promise<CompileResult | undefined>;
 
   /**
    * Load the AST for the given document.
@@ -95,20 +96,23 @@ export function createCompileService({
   }
 
   async function compile(
-    document: TextDocument | TextDocumentIdentifier
+    document: TextDocument | TextDocumentIdentifier,
+    additionalOptions?: CompilerOptions
   ): Promise<CompileResult | undefined> {
     const path = await fileService.getPath(document);
     const mainFile = await getMainFileForDocument(path);
     const config = await getConfig(mainFile);
     log({ level: "debug", message: `config resolved`, detail: config });
 
-    const [optionsFromConfig, _] = resolveOptionsFromConfig(config, { cwd: path });
+    const [optionsFromConfig, _] = resolveOptionsFromConfig(config, { cwd: dirname(path) });
     const options: CompilerOptions = {
       ...optionsFromConfig,
       ...serverOptions,
+      ...additionalOptions,
     };
     log({ level: "debug", message: `compiler options resolved`, detail: options });
 
+    let entryPoint = mainFile;
     if (!fileService.upToDate(document)) {
       return undefined;
     }
@@ -128,6 +132,7 @@ export function createCompileService({
           level: "debug",
           message: `target file was not included in compiling, try to compile ${path} as main file directly`,
         });
+        entryPoint = path;
         program = await compileProgram(compilerHost, path, options, oldPrograms.get(path));
         oldPrograms.set(path, program);
       }
@@ -142,7 +147,7 @@ export function createCompileService({
       const script = program.sourceFiles.get(resolvedPath);
       compilerAssert(script, "Failed to get script.");
 
-      const result: CompileResult = { program, document: doc, script };
+      const result: CompileResult = { program, document: doc, script, entryPoint };
       notify("compileEnd", result);
       return result;
     } catch (err: any) {

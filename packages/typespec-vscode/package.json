@@ -63,6 +63,12 @@
             "description": "Path to `tsp-server` command that runs the TypeSpec language server.\n\nIf not specified, then `tsp-server` found on PATH is used.\n\nExample (User): /usr/local/bin/tsp-server\nExample (Workspace): ${workspaceFolder}/node_modules/@typespec/compiler",
             "scope": "machine-overridable"
           },
+          "typespec.tsp-cli.path": {
+            "type": "string",
+            "default": "",
+            "description": "Path to `tsp` command that runs the TypeSpec CLI.\n\nIf not specified, then `tsp` found on PATH is used.\n\nExample (User): /usr/local/bin/tsp\nExample (Workspace): ${workspaceFolder}/node_modules/@typespec/compiler",
+            "scope": "machine-overridable"
+          },
           "typespec.trace.server": {
             "scope": "window",
             "type": "string",
@@ -105,6 +111,67 @@
         "command": "typespec.showOutputChannel",
         "title": "Show Output Channel",
         "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.showOpenApi3",
+        "title": "Show OpenAPI3 Documentation",
+        "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.emit",
+        "title": "Emit...",
+        "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.compile",
+        "title": "Compile...",
+        "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.watch",
+        "title": "Watch...",
+        "category": "TypeSpec"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceLangId == typespec",
+          "command": "typespec.showOpenApi3",
+          "group": "TypeSpecGroup@1"
+        },
+        {
+          "when": "resourceLangId == typespec",
+          "command": "typespec.emit",
+          "group": "TypeSpecGroup@2"
+        }
+      ]
+    },
+    "taskDefinitions": [
+      {
+        "type": "typespec",
+        "required": [
+          "mainFile",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "compile",
+              "watch"
+            ],
+            "description": "The action to perform"
+          },
+          "mainFile": {
+            "type": "string",
+            "description": "The main.tsp file to compile/watch"
+          },
+          "outputDir": {
+            "type": "string",
+            "description": "The output directory for the generated files"
+          }
+        }
       }
     ],
     "semanticTokenScopes": [
@@ -152,5 +219,8 @@
     "typescript": "~5.5.4",
     "vitest": "^2.0.4",
     "vscode-languageclient": "~9.0.1"
+  },
+  "dependencies": {
+    "yaml": "~2.4.5"
   }
 }

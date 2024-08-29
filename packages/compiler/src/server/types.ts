@@ -37,7 +37,7 @@ import {
   WorkspaceFoldersChangeEvent,
 } from "vscode-languageserver";
 import { TextDocument, TextEdit } from "vscode-languageserver-textdocument";
-import type { CompilerHost, Program, SourceFile, TypeSpecScriptNode } from "../core/index.js";
+import type { CompilerHost, CompilerOptions, Program, SourceFile, TypeSpecScriptNode } from "../core/index.js";
 
 export type ServerLogLevel = "trace" | "debug" | "info" | "warning" | "error";
 export interface ServerLog {
@@ -61,6 +61,19 @@ export interface CompileResult {
   readonly program: Program;
   readonly document: TextDocument;
   readonly script: TypeSpecScriptNode;
+  readonly entryPoint: string;
+}
+
+export interface CompileResultSlim {
+  readonly hasError: boolean;
+  readonly diagnostics: string | undefined;
+  readonly entryPoint: string | undefined;
+  readonly options: CompilerOptions | undefined;
+}
+
+export interface CompileContext{
+  readonly entryPoint: string;
+  readonly config: CompilerOptions;
 }
 
 export interface Server {
@@ -89,6 +102,7 @@ export interface Server {
   getCodeActions(params: CodeActionParams): Promise<CodeAction[]>;
   executeCommand(params: ExecuteCommandParams): Promise<void>;
   log(log: ServerLog): void;
+  customCompile(param: {doc: TextDocumentIdentifier, options: CompilerOptions}): Promise<CompileResultSlim>;
 }
 
 export interface ServerSourceFile extends SourceFile {

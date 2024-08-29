@@ -1,0 +1,10 @@
+import vscode from "vscode";
+
+export interface EmitPackageQuickPickItem extends vscode.QuickPickItem {
+  package: string;
+  fromConfig: boolean;
+}
+export class EmitQuickPickItem implements vscode.QuickPickItem {
+
+  constructor(public readonly label: string, public readonly description: string, public readonly detail: string) {}
+}
