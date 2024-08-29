@@ -166,6 +166,9 @@ export function createServer(host: ServerHost): Server {
     onGetCompileContext,
     onRequestTryCompile,
     log,
+    onCustomCompile(
+      doc: TextDocumentIdentifier
+    ): Promise<Program | string | Record<string, string> | undefined>;
   };
 
   async function initialize(params: InitializeParams): Promise<InitializeResult> {
