@@ -129,6 +129,8 @@ function main() {
   connection.onExecuteCommand(profile(s.executeCommand));
   connection.languages.semanticTokens.on(profile(s.buildSemanticTokens));
 
+  connection.onRequest("custom/compile", profile(s.customCompile));
+
   documents.onDidChangeContent(profile(s.checkChange));
   documents.onDidClose(profile(s.documentClosed));
 

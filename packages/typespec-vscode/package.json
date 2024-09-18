@@ -29,7 +29,8 @@
   },
   "activationEvents": [
     "onLanguage:typespec",
-    "onCommand:typespec.restartServer"
+    "onCommand:typespec.restartServer",
+    "workspaceContains:**/tspconfig.yaml"
   ],
   "icon": "./icons/logo.png",
   "contributes": {
@@ -105,8 +106,32 @@
         "command": "typespec.showOutputChannel",
         "title": "Show Output Channel",
         "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.showOpenApi3",
+        "title": "TypeSpec: Show OpenAPI3 Documentation",
+        "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.emit",
+        "title": "TypeSpec: Emit...",
+        "category": "TypeSpec"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceLangId == typespec",
+          "command": "typespec.showOpenApi3",
+          "group": "TypeSpecGroup@1"
+        },
+        {
+          "when": "resourceLangId == typespec",
+          "command": "typespec.emit",
+          "group": "TypeSpecGroup@2"
+        }
+      ]
+    },
     "semanticTokenScopes": [
       {
         "scopes": {
@@ -153,6 +178,9 @@
     "generate-third-party-notices": "typespec-build-tool generate-third-party-notices",
     "package-vsix": "vsce package",
     "deploy": "vsce publish"
+  },
+  "dependencies": {
+    "yaml": "~2.5.1"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "~26.0.1",

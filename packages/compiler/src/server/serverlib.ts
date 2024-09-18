@@ -39,6 +39,7 @@ import {
   SignatureHelp,
   SignatureHelpParams,
   TextDocumentChangeEvent,
+  TextDocumentIdentifier,
   TextDocumentSyncKind,
   TextEdit,
   Diagnostic as VSDiagnostic,
@@ -50,7 +51,7 @@ import { resolveCodeFix } from "../core/code-fixes.js";
 import { compilerAssert, getSourceLocation } from "../core/diagnostics.js";
 import { formatTypeSpec } from "../core/formatter.js";
 import { getEntityName, getTypeName } from "../core/helpers/type-name-utils.js";
-import { ResolveModuleHost, resolveModule } from "../core/index.js";
+import { CompilerOptions, ResolveModuleHost, resolveModule } from "../core/index.js";
 import { getPositionBeforeTrivia } from "../core/parser-utils.js";
 import { getNodeAtPosition, getNodeAtPositionDetail, visitChildren } from "../core/parser.js";
 import { ensureTrailingDirectorySeparator, getDirectoryPath } from "../core/path-utils.js";
@@ -66,9 +67,11 @@ import {
   Diagnostic,
   DiagnosticTarget,
   IdentifierNode,
+  NoTarget,
   Node,
   PositionDetail,
   SourceFile,
+  SourceLocation,
   SyntaxKind,
   TextRange,
   TypeReferenceNode,
@@ -89,6 +92,7 @@ import {
 } from "./type-details.js";
 import {
   CompileResult,
+  CompileResultSlim,
   SemanticTokenKind,
   Server,
   ServerHost,
@@ -155,7 +159,62 @@ export function createServer(host: ServerHost): Server {
     getCodeActions,
     executeCommand,
     log,
+    customCompile,
   };
+
+  // TODO: better result model needed
+  async function customCompile(param: {
+    doc: TextDocumentIdentifier;
+    options: CompilerOptions;
+  }): Promise<CompileResultSlim> {
+    const option: CompilerOptions = {
+      ...param.options,
+    };
+
+    const result = await compileService.compile(param.doc, option);
+    const isSourceLocation = (obj: any): obj is SourceLocation => {
+      return obj && "file" in obj;
+    };
+    let diagnostics: string | undefined = undefined;
+    if ((result?.program.diagnostics.length ?? 0) > 0) {
+      diagnostics = JSON.stringify(
+        result?.program.diagnostics.map((x) => {
+          let target = undefined;
+          if (x.target && x.target !== NoTarget && isSourceLocation(x.target)) {
+            target = x.target;
+          }
+
+          return {
+            message: x.message,
+            code: x.code,
+            severity: x.severity,
+            path: target?.file.path,
+            text: target?.file.text,
+            pos: target?.pos,
+            end: target?.end,
+          };
+        }),
+        null,
+        2,
+      );
+    }
+    if (result === undefined) {
+      return {
+        hasError: true,
+        diagnostics:
+          "Failed to get compiler result, please check the compilation output for details",
+        entryPoint: undefined,
+        options: undefined,
+      };
+    } else {
+      return {
+        hasError: result.program.hasError(),
+        diagnostics: diagnostics ?? "",
+        entryPoint: result.entryPoint,
+        options: result.program.compilerOptions,
+      };
+    }
+  }
 
   async function initialize(params: InitializeParams): Promise<InitializeResult> {
     const tokenLegend: SemanticTokensLegend = {

@@ -1,18 +1,30 @@
+import { CompileResultSlim } from "@typespec/compiler";
 import { ResolveModuleHost } from "@typespec/compiler/module-resolver";
+import fs from "fs";
 import { readFile, realpath, stat } from "fs/promises";
 import { dirname, isAbsolute, join, resolve } from "path";
-import vscode, { ExtensionContext, commands, workspace } from "vscode";
+import vscode, { commands, ExtensionContext, QuickPickItemKind, workspace } from "vscode";
 import {
   Executable,
   ExecutableOptions,
   LanguageClient,
   LanguageClientOptions,
 } from "vscode-languageclient/node.js";
+import YAML from "yaml";
 import logger from "./extension-logger.js";
 import { TypeSpecLogOutputChannel } from "./typespec-log-output-channel.js";
-import { normalizeSlash } from "./utils.js";
+import {
+  createCompileTask,
+  EmitPackageQuickPickItem,
+  ensureNpmPackageInstalled,
+  getMainTspFile,
+  loadEmitterOptions,
+  recommendedEmitters,
+} from "./util-typespec.js";
+import { createTempDir, executeVscodeTask, normalizeSlash } from "./utils.js";
 
 let client: LanguageClient | undefined;
+const openApi3FileCache = new Map<string, string>();
 /**
  * Workaround: LogOutputChannel doesn't work well with LSP RemoteConsole, so having a customized LogOutputChannel to make them work together properly
  * More detail can be found at https://github.com/microsoft/vscode-discussions/discussions/1149
@@ -33,6 +45,25 @@ export async function activate(context: ExtensionContext) {
     commands.registerCommand("typespec.restartServer", restartTypeSpecServer),
   );
 
+  context.subscriptions.push(
+    commands.registerCommand("typespec.showOpenApi3", async (uri: vscode.Uri) => {
+      await showOpenApi3(context, uri);
+    }),
+  );
+
+  context.subscriptions.push(
+    commands.registerCommand("typespec.emit", async (uri: vscode.Uri) => {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Window,
+          title: "TypeSpec Emitting",
+          cancellable: false,
+        },
+        async (progress) => await doEmit(context, uri, progress),
+      );
+    }),
+  );
+
   return await vscode.window.withProgress(
     {
       title: "Launching TypeSpec language service...",
@@ -40,6 +71,454 @@ export async function activate(context: ExtensionContext) {
     },
     async () => launchLanguageClient(context),
   );
+}
+
+async function doEmit(
+  context: vscode.ExtensionContext,
+  uri: vscode.Uri,
+  overallProgress: vscode.Progress<{ message?: string; increment?: number }>,
+) {
+  const cli = await resolveTypeSpecCli(uri.fsPath);
+  if (!cli) {
+    logger.error(
+      "TypeSpec CLI is not resolved to emit. Please try again later. If the problem persists, please double check the configuration typespec.tsp-cli.path.",
+      [],
+      {
+        showOutput: false,
+        showPopup: true,
+      },
+    );
+  }
+
+  let startFile: string | undefined = uri?.fsPath;
+  if (!client) {
+    logger.error("TypeSpec server is not started. Please restart the server and try again.");
+    return;
+  }
+  if (!startFile) {
+    startFile = await getMainTspFile();
+    if (!startFile) {
+      logger.error("No main.tsp file found in the workspace to start emit.");
+      return;
+    }
+    uri = vscode.Uri.file(startFile);
+  }
+
+  logger.info("Verify compilation...", [], {
+    showOutput: false,
+    showPopup: false,
+    progress: overallProgress,
+  });
+  const {
+    hasError,
+    entryPoint,
+    options: config,
+  } = await client.sendRequest<CompileResultSlim>("custom/compile", {
+    doc: { uri: uri.toString() },
+    options: {},
+  });
+  if (hasError) {
+    logger.error("Compilation failed. Please fix it first.", [], {
+      showOutput: false,
+      showPopup: true,
+    });
+    void vscode.commands.executeCommand("workbench.actions.view.problems");
+    return;
+  }
+  if (!entryPoint || !config) {
+    logger.error("Failed to get entry point or config to compile.", [], {
+      showOutput: false,
+      showPopup: true,
+    });
+    return;
+  }
+
+  startFile = entryPoint;
+  if (!startFile) {
+    logger.error(`Can't find entry point for the file '${uri?.fsPath ?? "N/A"}' to start emit.`);
+    return;
+  }
+
+  logger.info("Collecting emitters...", [], {
+    showOutput: false,
+    showPopup: false,
+    progress: overallProgress,
+  });
+  const recommended: EmitPackageQuickPickItem[] = [...recommendedEmitters];
+  const toQuickPickItem = (
+    packageName: string,
+    picked: boolean,
+    fromConfig: boolean,
+  ): EmitPackageQuickPickItem => {
+    const found = recommended.findIndex((ke) => ke.package === packageName);
+    if (found >= 0) {
+      const deleted = recommended.splice(found, 1);
+      deleted[0].picked = picked;
+      return { ...deleted[0], ...{ picked, fromConfig } };
+    } else {
+      return { package: packageName, label: packageName, picked, fromConfig };
+    }
+  };
+  const emitOnlyInOptions = Object.keys(config.options ?? {})
+    .filter((key) => !config.emit?.includes(key))
+    .map((e) => toQuickPickItem(e, false, true));
+  const emitInEmit = (config.emit ?? []).map((e: any) => toQuickPickItem(e.toString(), true, true));
+
+  const all = [...emitInEmit, ...emitOnlyInOptions];
+
+  if (recommended.length > 0) {
+    all.push({
+      package: "",
+      label: "Recommended Emitters",
+      kind: QuickPickItemKind.Separator,
+      fromConfig: false,
+    });
+  }
+  recommended.forEach((e) => {
+    all.push(e);
+  });
+
+  let selectedEmitters = await vscode.window.showQuickPick<EmitPackageQuickPickItem>(all, {
+    canPickMany: true,
+    placeHolder: "Select emitters to run",
+  });
+
+  if (!selectedEmitters || selectedEmitters.length === 0) {
+    logger.info("No emitters selected. Emit canceled.", [], {
+      showOutput: false,
+      showPopup: true,
+      progress: overallProgress,
+    });
+    return;
+  }
+
+  const TO_BE_COMMENTED = "___to_be_commented___";
+  const NEWLINE = "___newline___";
+  const basedir = dirname(startFile);
+  const allSupported = {} as Record<string, Record<string, string>>;
+  const ignoredEmitters: EmitPackageQuickPickItem[] = [];
+  for (const e of selectedEmitters) {
+    let checkPackage = true;
+    let cancelled = false;
+    while (checkPackage) {
+      checkPackage = false;
+      await ensureNpmPackageInstalled(
+        e.package,
+        undefined,
+        dirname(uri.fsPath),
+        async () => {
+          const options = {
+            ok: `OK (install ${e.package} by 'node install'`,
+            recheck: `Check again (${e.package} has been installed manually)`,
+            ignore: `Ignore emitter ${e.label}`,
+            cancel: "Cancel",
+          };
+          const selected = await vscode.window.showQuickPick(Object.values(options), {
+            canPickMany: false,
+            ignoreFocusOut: true,
+            placeHolder: `Package '${e.package}' needs to be installed for emitting`,
+            title: `TypeSpec Emit...`,
+          });
+
+          if (selected === options.ok) {
+            logger.info(`installing ${e.package}...`, [], {
+              showOutput: true,
+              showPopup: false,
+              progress: overallProgress,
+            });
+            return "install";
+          } else if (selected === options.recheck) {
+            checkPackage = true;
+            return "skip";
+          } else if (selected === options.ignore) {
+            ignoredEmitters.push(e);
+            logger.info(`ignore ${e.package}`, [], {
+              showOutput: true,
+              showPopup: false,
+              progress: overallProgress,
+            });
+            return "skip";
+          } else if (selected === options.cancel || !selected) {
+            cancelled = true;
+            logger.info(`Operation canceled by user`, [], {
+              showOutput: true,
+              showPopup: false,
+              progress: overallProgress,
+            });
+            return "skip";
+          } else {
+            logger.error(
+              `Unexpected selected value for installing package ${e.package}: ${selected}`,
+              [],
+              {
+                showOutput: false,
+                showPopup: false,
+              },
+            );
+            cancelled = true;
+            return "skip";
+          }
+        },
+        async (output) => {
+          if (output.exitCode === 0) {
+            logger.info(`successfully installing package/emitter ${e.package}`, [], {
+              showOutput: false,
+              showPopup: false,
+            });
+          } else {
+            logger.error(`Error when installing package/emitter ${e.package}`, [], {
+              showOutput: true,
+              showPopup: true,
+            });
+            cancelled = true;
+          }
+        },
+      );
+      if (cancelled) {
+        return;
+      }
+    }
+    if (!e.fromConfig && !ignoredEmitters.includes(e)) {
+      const supported =
+        (await loadEmitterOptions(
+          basedir,
+          e.package,
+          (key) => `${TO_BE_COMMENTED}${key}`,
+          (value) => value.replaceAll("\n", NEWLINE),
+        )) ?? ({} as Record<string, string>);
+      if (supported) allSupported[e.package] = supported;
+    }
+  }
+
+  let configFile = config.config;
+  if (!configFile) {
+    configFile = join(basedir, "tspconfig.yaml");
+    const s = await vscode.window.showQuickPick(["Yes", "Cancel"], {
+      canPickMany: false,
+      ignoreFocusOut: true,
+      title: "TypeSpec Emit...",
+      placeHolder: `tspconfig.yaml not found. Create one at ${configFile}?`,
+    });
+
+    if (s === "Yes") {
+      fs.writeFileSync(configFile, "options:\n");
+    } else {
+      logger.info("Operation canceled by user", [], {
+        showOutput: false,
+        showPopup: false,
+        progress: overallProgress,
+      });
+      return;
+    }
+  }
+
+  selectedEmitters = selectedEmitters.filter((e) => !ignoredEmitters.includes(e));
+  logger.info("Updating config...", [], {
+    showOutput: false,
+    showPopup: false,
+    progress: overallProgress,
+  });
+  if (Object.keys(allSupported).length > 0) {
+    const content = fs.readFileSync(configFile);
+    const doc = YAML.parse(content.toString());
+    if (!doc["options"]) {
+      doc["options"] = allSupported;
+    } else {
+      doc["options"] = { ...allSupported, ...doc["options"] };
+    }
+    doc["emit"] = selectedEmitters.map((e) => e.package);
+    let output = YAML.stringify(doc, undefined, { indent: 2, lineWidth: 0 });
+    output = output.replaceAll(TO_BE_COMMENTED, "#").replaceAll(NEWLINE, "\n      # ");
+    fs.writeFileSync(configFile, output);
+  }
+
+  logger.info("Emitting...", [], {
+    showOutput: false,
+    showPopup: false,
+    progress: overallProgress,
+  });
+  const t = createCompileTask(cli!, startFile);
+  if (t) {
+    executeVscodeTask(t).then(
+      (value) => {
+        logger.info("Emitting finished successfully", [], {
+          showOutput: false,
+          showPopup: true,
+          progress: overallProgress,
+        });
+      },
+      (reason) => {
+        logger.error(`Error when emitting: ${reason}`, [], {
+          showOutput: true,
+          showPopup: true,
+        });
+        logger.info("Emitting finished with error. Check the output for details", [], {
+          showOutput: false,
+          showPopup: false,
+          progress: overallProgress,
+        });
+      },
+    );
+  }
+}
+
+async function showOpenApi3(context: vscode.ExtensionContext, uri: vscode.Uri) {
+  let startFile: string | undefined = uri?.fsPath;
+  if (!startFile) {
+    startFile = await getMainTspFile();
+    if (!startFile) {
+      logger.error("No main.tsp file found in the workspace to generate OpenAPI3 document.");
+      return;
+    }
+  } else {
+    // TODO: try to update startfile to main file for better cache (but not needed if we use memory)
+  }
+
+  const dir = dirname(startFile);
+  try {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Window,
+        title: "Checking @typespec/openapi3...",
+        cancellable: false,
+      },
+      async (progress) => {
+        await ensureNpmPackageInstalled(
+          "@typespec/openapi3",
+          undefined,
+          dir,
+          async () => {
+            progress.report({ message: "install @typespec/openapi3...", increment: 10 });
+            return "install";
+          },
+          async (output) => {
+            if (output.exitCode === 0) {
+              progress.report({ message: "finish installing @typespec/openapi3", increment: 100 });
+            } else {
+              progress.report({
+                message: "error when installing @typespec/openapi3. please check Output for detail",
+                increment: 100,
+              });
+              logger.error("Error when installing @typespec/openapi3", [], {
+                showOutput: true,
+                showPopup: true,
+              });
+            }
+          },
+        );
+      },
+    );
+  } catch (e) {
+    logger.error("Error when installing openapi3: \n" + JSON.stringify(e), [], {
+      showOutput: true,
+      showPopup: true,
+    });
+    return;
+  }
+
+  const root = vscode.Uri.joinPath(context.extensionUri, "openapi3_view");
+  const panel = vscode.window.createWebviewPanel(
+    "webview",
+    "OpenAPI3 from Typespec",
+    vscode.ViewColumn.Beside,
+    {
+      retainContextWhenHidden: true,
+      enableScripts: true,
+      localResourceRoots: [root],
+    },
+  );
+
+  const bundleJs = panel.webview.asWebviewUri(
+    vscode.Uri.joinPath(root, "swagger-ui", "dist", "swagger-ui-bundle.js"),
+  );
+  const presetJs = panel.webview.asWebviewUri(
+    vscode.Uri.joinPath(root, "swagger-ui", "dist", "swagger-ui-standalone-preset.js"),
+  );
+  const initJs = panel.webview.asWebviewUri(
+    vscode.Uri.joinPath(root, "swagger-ui", "dist", "swagger-initializer.js"),
+  );
+  const css = panel.webview.asWebviewUri(
+    vscode.Uri.joinPath(root, "swagger-ui", "dist", "swagger-ui.css"),
+  );
+
+  // <html lang="en" data-bs-theme="vscode">
+  panel.webview.html = `<!doctype html>
+                        <html lang="en">
+                          <head>
+                            <meta charset="utf-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1">
+                            <link rel="stylesheet" type="text/css" href="${css}" />
+                          </head>
+                          <body class="no-margin-padding full-device-view" style="background-color:white">
+                            <div id="swagger-ui"></div>
+                            <script src="${bundleJs}" charset="UTF-8"> </script>
+                            <script src="${presetJs}" charset="UTF-8"> </script>
+                            <script src="${initJs}" charset="UTF-8"> </script>
+                          </body>
+                        </html>`;
+
+  let tmpFolder = openApi3FileCache.get(startFile);
+  if (!tmpFolder) {
+    tmpFolder = createTempDir();
+    openApi3FileCache.set(startFile, tmpFolder);
+  }
+
+  const loadHandler = async () => {
+    const result = await client?.sendRequest<{ hasError: boolean; diagnostics: string }>(
+      "custom/compile",
+      {
+        doc: { uri: uri.toString() },
+        options: {
+          options: {
+            "@typespec/openapi3": {
+              "emitter-output-dir": tmpFolder,
+              "file-type": "json",
+            },
+          },
+          emit: ["@typespec/openapi3"],
+          outputDir: tmpFolder,
+          noEmit: false,
+        },
+      },
+    );
+    if ((result?.hasError ?? true) === true) {
+      void panel.webview.postMessage({
+        command: "diagnostics",
+        param: result?.diagnostics ?? "no diagnostics info",
+      });
+    } else {
+      const outputs = fs.readdirSync(tmpFolder);
+      if (outputs.length === 0) {
+        void panel.webview.postMessage({
+          command: "diagnostics",
+          param: "No openApi3 files generated.",
+        });
+      } else {
+        const first = outputs[0];
+        const fileContent = fs.readFileSync(join(tmpFolder, first), "utf-8");
+        // BETTER ERROR HANDLING
+        const content = JSON.parse(fileContent);
+        void panel.webview.postMessage({ command: "load", param: content });
+      }
+    }
+  };
+  setTimeout(async () => {
+    await loadHandler();
+  }, 200);
+
+  const watch = vscode.workspace.createFileSystemWatcher("**/*.{tsp,ts}");
+  watch.onDidChange(async (e) => {
+    await loadHandler();
+  });
+  watch.onDidCreate(async (e) => {
+    await loadHandler();
+  });
+  watch.onDidDelete(async (e) => {
+    await loadHandler();
+  });
+  panel.onDidDispose(() => {
+    watch.dispose();
+  });
 }
 
 function createTaskProvider() {
@@ -351,6 +830,11 @@ async function isFile(path: string) {
 
 export async function deactivate() {
   await client?.stop();
+  openApi3FileCache.forEach((value, key) => {
+    try {
+      fs.rmSync(value);
+    } catch (e) {}
+  });
 }
 
 /**
