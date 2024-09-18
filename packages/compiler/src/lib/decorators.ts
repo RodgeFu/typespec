@@ -106,7 +106,6 @@ import {
   UnionVariant,
   Value,
 } from "../core/types.js";
-import { useStateMap, useStateSet } from "./utils.js";
 
 export { $encodedName, resolveEncodedName } from "./encoded-names.js";
 export { serializeValueAsJson } from "./examples.js";
@@ -130,7 +129,7 @@ function createStateSymbol(name: string) {
   return Symbol.for(`TypeSpec.${name}`);
 }
 
-const [getSummary, setSummary] = useStateMap<Type, string>("summary");
+const summaryKey = createStateSymbol("summary");
 /**
  * @summary attaches a documentation string. It is typically used to give a short, single-line
  * description, and can be used in combination with or instead of @doc.
@@ -150,10 +149,12 @@ export const $summary: SummaryDecorator = (
     text = replaceTemplatedStringFromProperties(text, sourceObject);
   }
 
-  setSummary(context.program, target, text);
+  context.program.stateMap(summaryKey).set(target, text);
 };
 
-export { getSummary };
+export function getSummary(program: Program, type: Type): string | undefined {
+  return program.stateMap(summaryKey).get(type);
+}
 
 /**
  * @doc attaches a documentation string. Works great with multi-line string literals.
@@ -331,14 +332,15 @@ function validateTargetingAString(
 
 // -- @error decorator ----------------------
 
-const [getErrorState, setErrorState] = useStateSet<Model>("error");
+const errorKey = createStateSymbol("error");
+
 /**
  * `@error` decorator marks a model as an error type.
  *  Any derived models (using extends) will also be seen as error types.
  */
 export const $error: ErrorDecorator = (context: DecoratorContext, entity: Model) => {
   validateDecoratorUniqueOnNode(context, entity, $error);
-  setErrorState(context.program, entity);
+  context.program.stateSet(errorKey).add(entity);
 };
 
 /**
@@ -350,7 +352,7 @@ export function isErrorModel(program: Program, target: Type): boolean {
   }
   let current: Model | undefined = target;
   while (current) {
-    if (getErrorState(program, current)) {
+    if (program.stateSet(errorKey).has(current)) {
       return true;
     }
     current = current.baseModel;
@@ -360,7 +362,7 @@ export function isErrorModel(program: Program, target: Type): boolean {
 
 // -- @format decorator ---------------------
 
-const [getFormat, setFormat] = useStateMap<Type, string>("format");
+const formatValuesKey = createStateSymbol("formatValues");
 
 /**
  * `@format` - specify the data format hint for a string type
@@ -394,13 +396,16 @@ export const $format: FormatDecorator = (
     );
   }
 
-  setFormat(context.program, target, format);
+  context.program.stateMap(formatValuesKey).set(target, format);
 };
 
-export { getFormat };
+export function getFormat(program: Program, target: Type): string | undefined {
+  return program.stateMap(formatValuesKey).get(target);
+}
 
 // -- @pattern decorator ---------------------
-const [getPatternData, setPatternData] = useStateMap<Type, PatternData>("patternValues");
+
+const patternValuesKey = createStateSymbol("patternValues");
 
 export interface PatternData {
   readonly pattern: string;
@@ -424,7 +429,7 @@ export const $pattern: PatternDecorator = (
     validationMessage,
   };
 
-  setPatternData(context.program, target, patternData);
+  context.program.stateMap(patternValuesKey).set(target, patternData);
 };
 
 /**
@@ -440,17 +445,17 @@ export function getPattern(program: Program, target: Type): string | undefined {
   return getPatternData(program, target)?.pattern;
 }
 
-export {
-  /**
-   * Gets the associated pattern data, including the pattern regular expression and optional validation message, if any
-   * has been set.
-   *
-   * @param program - the Program containing the target Type
-   * @param target - the type to get the pattern data for
-   * @returns the pattern data, if any was set
-   */
-  getPatternData,
-};
+/**
+ * Gets the associated pattern data, including the pattern regular expression and optional validation message, if any
+ * has been set.
+ *
+ * @param program - the Program containing the target Type
+ * @param target - the type to get the pattern data for
+ * @returns the pattern data, if any was set
+ */
+export function getPatternData(program: Program, target: Type): PatternData | undefined {
+  return program.stateMap(patternValuesKey).get(target);
+}
 
 // -- @minLength decorator ---------------------
 
@@ -653,7 +658,7 @@ export const $maxValueExclusive: MaxValueExclusiveDecorator = (
 };
 // -- @secret decorator ---------------------
 
-const [isSecret, markSecret] = useStateSet("secretTypes");
+const secretTypesKey = createStateSymbol("secretTypes");
 
 /**
  * Mark a string as a secret value that should be treated carefully to avoid exposure
@@ -669,10 +674,12 @@ export const $secret: SecretDecorator = (
   if (!validateTargetingAString(context, target, "@secret")) {
     return;
   }
-  markSecret(context.program, target);
+  context.program.stateMap(secretTypesKey).set(target, true);
 };
 
-export { isSecret };
+export function isSecret(program: Program, target: Type): boolean | undefined {
+  return program.stateMap(secretTypesKey).get(target);
+}
 
 export type DateTimeKnownEncoding = "rfc3339" | "rfc7231" | "unixTimestamp";
 export type DurationKnownEncoding = "ISO8601" | "seconds";
@@ -687,7 +694,7 @@ export interface EncodeData {
   type: Scalar;
 }
 
-const [getEncode, setEncodeData] = useStateMap<Scalar | ModelProperty, EncodeData>("encode");
+const encodeKey = createStateSymbol("encode");
 export const $encode: EncodeDecorator = (
   context: DecoratorContext,
   target: Scalar | ModelProperty,
@@ -702,7 +709,7 @@ export const $encode: EncodeDecorator = (
   }
   const targetType = getPropertyType(target);
   validateEncodeData(context, targetType, encodeData);
-  setEncodeData(context.program, target, encodeData);
+  context.program.stateMap(encodeKey).set(target, encodeData);
 };
 
 function computeEncoding(
@@ -805,13 +812,17 @@ function validateEncodeData(context: DecoratorContext, target: Type, encodeData:
   }
 }
 
-export { getEncode };
+export function getEncode(
+  program: Program,
+  target: Scalar | ModelProperty,
+): EncodeData | undefined {
+  return program.stateMap(encodeKey).get(target);
+}
 
 // -- @visibility decorator ---------------------
 
-const [getVisibility, setVisibility, getVisibilityStateMap] = useStateMap<Type, string[]>(
-  "visibilitySettings",
-);
+const visibilitySettingsKey = createStateSymbol("visibilitySettings");
+
 export const $visibility: VisibilityDecorator = (
   context: DecoratorContext,
   target: ModelProperty,
@@ -819,13 +830,15 @@ export const $visibility: VisibilityDecorator = (
 ) => {
   validateDecoratorUniqueOnNode(context, target, $visibility);
 
-  setVisibility(context.program, target, visibilities);
+  context.program.stateMap(visibilitySettingsKey).set(target, visibilities);
 };
 
-export { getVisibility };
+export function getVisibility(program: Program, target: Type): string[] | undefined {
+  return program.stateMap(visibilitySettingsKey).get(target);
+}
 
 function clearVisibilities(program: Program, target: Type) {
-  getVisibilityStateMap(program).delete(target);
+  program.stateMap(visibilitySettingsKey).delete(target);
 }
 
 export const $withVisibility: WithVisibilityDecorator = (
@@ -980,8 +993,7 @@ export function isListOperation(program: Program, target: Operation): boolean {
 }
 
 // -- @tag decorator ---------------------
-
-const [getTagsState, setTags] = useStateMap<Type, string[]>("tagProperties");
+const tagPropertiesKey = createStateSymbol("tagProperties");
 
 // Set a tag on an operation, interface, or namespace.  There can be multiple tags on an
 // operation, interface, or namespace.
@@ -990,17 +1002,17 @@ export const $tag: TagDecorator = (
   target: Operation | Namespace | Interface,
   tag: string,
 ) => {
-  const tags = getTagsState(context.program, target);
+  const tags = context.program.stateMap(tagPropertiesKey).get(target);
   if (tags) {
     tags.push(tag);
   } else {
-    setTags(context.program, target, [tag]);
+    context.program.stateMap(tagPropertiesKey).set(target, [tag]);
   }
 };
 
 // Return the tags set on an operation or namespace
 export function getTags(program: Program, target: Type): string[] {
-  return getTagsState(program, target) || [];
+  return program.stateMap(tagPropertiesKey).get(target) || [];
 }
 
 // Merge the tags for a operation with the tags that are on the namespace or
@@ -1031,7 +1043,8 @@ export function getAllTags(
 
 // -- @friendlyName decorator ---------------------
 
-const [getFriendlyName, setFriendlyName] = useStateMap<Type, string>("friendlyNames");
+const friendlyNamesKey = createStateSymbol("friendlyNames");
+
 export const $friendlyName: FriendlyNameDecorator = (
   context: DecoratorContext,
   target: Type,
@@ -1064,13 +1077,14 @@ export const $friendlyName: FriendlyNameDecorator = (
     friendlyName = replaceTemplatedStringFromProperties(friendlyName, sourceObject);
   }
 
-  setFriendlyName(context.program, target, friendlyName);
+  context.program.stateMap(friendlyNamesKey).set(target, friendlyName);
 };
 
-export { getFriendlyName };
+export function getFriendlyName(program: Program, target: Type): string {
+  return program.stateMap(friendlyNamesKey).get(target);
+}
 
-const [getKnownValues, setKnownValues] = useStateMap<Type, Enum>("knownValues");
-
+const knownValuesKey = createStateSymbol("knownValues");
 /**
  * `@knownValues` marks a string type with an enum that contains all known values
  *
@@ -1113,7 +1127,7 @@ export const $knownValues = (
       return;
     }
   }
-  setKnownValues(context.program, target, knownValues);
+  context.program.stateMap(knownValuesKey).set(target, knownValues);
 };
 
 function isEnumMemberAssignableToType(program: Program, typeName: Type, member: EnumMember) {
@@ -1127,9 +1141,12 @@ function isEnumMemberAssignableToType(program: Program, typeName: Type, member: 
       return false;
   }
 }
-export { getKnownValues };
 
-const [getKey, setKey] = useStateMap<Type, string>("key");
+export function getKnownValues(program: Program, target: Scalar | ModelProperty): Enum | undefined {
+  return program.stateMap(knownValuesKey).get(target);
+}
+
+const keyKey = createStateSymbol("key");
 
 /**
  * `@key` - mark a model property as the key to identify instances of that type
@@ -1156,15 +1173,15 @@ export const $key: KeyDecorator = (
   }
 
   // Register the key property
-  setKey(context.program, entity, altName || entity.name);
+  context.program.stateMap(keyKey).set(entity, altName || entity.name);
 };
 
 export function isKey(program: Program, property: ModelProperty) {
-  return getKey(program, property) !== undefined;
+  return program.stateMap(keyKey).has(property);
 }
 
 export function getKeyName(program: Program, property: ModelProperty): string {
-  return getKey(program, property) || property.name;
+  return program.stateMap(keyKey).get(property);
 }
 
 export const $withDefaultKeyVisibility: WithDefaultKeyVisibilityDecorator = (
@@ -1228,10 +1245,8 @@ export function getDeprecated(program: Program, type: Type): string | undefined 
   return getDeprecationDetails(program, type)?.message;
 }
 
-const [getOverloads, setOverloads] = useStateMap<Operation, Operation[]>("overloadedByKey");
-const [getOverloadedOperation, setOverloadBase] = useStateMap<Operation, Operation>(
-  "overloadsOperation",
-);
+const overloadedByKey = createStateSymbol("overloadedByKey");
+const overloadsOperationKey = createStateSymbol("overloadsOperation");
 
 /**
  * `@overload` - Indicate that the target overloads (specializes) the overloads type.
@@ -1266,10 +1281,9 @@ export const $overload: OverloadDecorator = (
     });
   }
   // Save the information about the overloaded operation
-
-  setOverloadBase(context.program, target, overloadBase);
+  context.program.stateMap(overloadsOperationKey).set(target, overloadBase);
   const existingOverloads = getOverloads(context.program, overloadBase) || new Array<Operation>();
-  setOverloads(context.program, overloadBase, existingOverloads.concat(target));
+  context.program.stateMap(overloadedByKey).set(overloadBase, existingOverloads.concat(target));
 };
 
 function areOperationsInSameContainer(op1: Operation, op2: Operation): boolean {
@@ -1296,23 +1310,28 @@ function getBaseInterface(int1: Interface): Interface {
     : getBaseInterface(int1.projectionSource as Interface);
 }
 
-export {
-  /**
-   * If the given operation overloads another operation, return that operation.
-   * @param program Program
-   * @param operation The operation to check for an overload target.
-   * @returns The operation this operation overloads, if any.
-   */
-  getOverloadedOperation,
+/**
+ * Get all operations that are marked as overloads of the given operation
+ * @param program Program
+ * @param operation Operation
+ * @returns An array of operations that overload the given operation.
+ */
+export function getOverloads(program: Program, operation: Operation): Operation[] | undefined {
+  return program.stateMap(overloadedByKey).get(operation);
+}
 
-  /**
-   * Get all operations that are marked as overloads of the given operation
-   * @param program Program
-   * @param operation Operation
-   * @returns An array of operations that overload the given operation.
-   */
-  getOverloads,
-};
+/**
+ * If the given operation overloads another operation, return that operation.
+ * @param program Program
+ * @param operation The operation to check for an overload target.
+ * @returns The operation this operation overloads, if any.
+ */
+export function getOverloadedOperation(
+  program: Program,
+  operation: Operation,
+): Operation | undefined {
+  return program.stateMap(overloadsOperationKey).get(operation);
+}
 
 const projectedNameKey = createStateSymbol("projectedNameKey");
 
@@ -1410,9 +1429,7 @@ export const $discriminator: DiscriminatorDecorator = (
   setDiscriminator(context.program, entity, discriminator);
 };
 
-const [getParameterVisibility, setParameterVisibility] = useStateMap<Type, string[]>(
-  "parameterVisibility",
-);
+const parameterVisibilityKey = createStateSymbol("parameterVisibility");
 
 export const $parameterVisibility: ParameterVisibilityDecorator = (
   context: DecoratorContext,
@@ -1420,38 +1437,37 @@ export const $parameterVisibility: ParameterVisibilityDecorator = (
   ...visibilities: string[]
 ) => {
   validateDecoratorUniqueOnNode(context, entity, $parameterVisibility);
-  setParameterVisibility(context.program, entity, visibilities);
+  context.program.stateMap(parameterVisibilityKey).set(entity, visibilities);
 };
 
-export {
-  /**
-   * Returns the visibilities of the parameters of the given operation, if provided with `@parameterVisibility`.
-   *
-   * @see {@link $parameterVisibility}
-   */
-  getParameterVisibility,
-};
+/**
+ * Returns the visibilities of the parameters of the given operation, if provided with `@parameterVisibility`.
+ *
+ * @see {@link $parameterVisibility}
+ */
+export function getParameterVisibility(program: Program, entity: Operation): string[] | undefined {
+  return program.stateMap(parameterVisibilityKey).get(entity);
+}
 
-const [getReturnTypeVisibility, setReturnTypeVisibility] = useStateMap<Type, string[]>(
-  "returnTypeVisibility",
-);
+const returnTypeVisibilityKey = createStateSymbol("returnTypeVisibility");
+
 export const $returnTypeVisibility: ReturnTypeVisibilityDecorator = (
   context: DecoratorContext,
   entity: Operation,
   ...visibilities: string[]
 ) => {
   validateDecoratorUniqueOnNode(context, entity, $returnTypeVisibility);
-  setReturnTypeVisibility(context.program, entity, visibilities);
+  context.program.stateMap(returnTypeVisibilityKey).set(entity, visibilities);
 };
 
-export {
-  /**
-   * Returns the visibilities of the return type of the given operation, if provided with `@returnTypeVisibility`.
-   *
-   * @see {@link $returnTypeVisibility}
-   */
-  getReturnTypeVisibility,
-};
+/**
+ * Returns the visibilities of the return type of the given operation, if provided with `@returnTypeVisibility`.
+ *
+ * @see {@link $returnTypeVisibility}
+ */
+export function getReturnTypeVisibility(program: Program, entity: Operation): string[] | undefined {
+  return program.stateMap(returnTypeVisibilityKey).get(entity);
+}
 
 export interface Example extends ExampleOptions {
   readonly value: Value;
@@ -1461,10 +1477,7 @@ export interface OpExample extends ExampleOptions {
   readonly returnType?: Value;
 }
 
-const [getExamplesState, setExamples] = useStateMap<
-  Model | Scalar | Enum | Union | ModelProperty | UnionVariant,
-  Example[]
->("examples");
+const exampleKey = createStateSymbol("examples");
 export const $example: ExampleDecorator = (
   context: DecoratorContext,
   target: Model | Scalar | Enum | Union | ModelProperty | UnionVariant,
@@ -1490,10 +1503,10 @@ export const $example: ExampleDecorator = (
     }
   }
 
-  let list = getExamplesState(context.program, target);
+  let list = context.program.stateMap(exampleKey).get(target);
   if (list === undefined) {
     list = [];
-    setExamples(context.program, target, list);
+    context.program.stateMap(exampleKey).set(target, list);
   }
   list.push({ value: rawExample, ...options });
 };
@@ -1502,10 +1515,10 @@ export function getExamples(
   program: Program,
   target: Model | Scalar | Enum | Union | ModelProperty,
 ): readonly Example[] {
-  return getExamplesState(program, target) ?? [];
+  return program.stateMap(exampleKey).get(target) ?? [];
 }
 
-const [getOpExamplesState, setOpExamples] = useStateMap<Operation, OpExample[]>("opExamples");
+const opExampleKey = createStateSymbol("opExamples");
 export const $opExample: OpExampleDecorator = (
   context: DecoratorContext,
   target: Operation,
@@ -1546,10 +1559,10 @@ export const $opExample: OpExampleDecorator = (
     }
   }
 
-  let list = getOpExamplesState(context.program, target);
+  let list = context.program.stateMap(opExampleKey).get(target);
   if (list === undefined) {
     list = [];
-    setOpExamples(context.program, target, list);
+    context.program.stateMap(opExampleKey).set(target, list);
   }
   list.push({ parameters, returnType, ...(options as any) });
 };
@@ -1573,5 +1586,5 @@ function checkExampleValid(
 }
 
 export function getOpExamples(program: Program, target: Operation): OpExample[] {
-  return getOpExamplesState(program, target) ?? [];
+  return program.stateMap(opExampleKey).get(target) ?? [];
 }
