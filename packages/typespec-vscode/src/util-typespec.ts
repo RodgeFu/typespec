@@ -6,7 +6,7 @@ import vscode from "vscode";
 import { Executable } from "vscode-languageclient/node.js";
 import logger from "./extension-logger.js";
 import { NpmUtil } from "./util-npm.js";
-import { ExecOutput, normalizeSlashInPath } from "./utils.js";
+import { ExecOutput, normalizeSlashInPath, spawnExecution } from "./utils.js";
 
 /** we only care the installed compiler version in package.json which may conflict with other typespec packages we want to install */
 export async function getInstalledTypespecCompilerVersion(directory: string) {
@@ -23,7 +23,6 @@ export async function ensureNpmPackageInstalled(
   version: string | undefined,
   directory: string,
   onPreInstall: () => Promise<"install" | "skip"> = async () => "install",
-  onPostInstall: (output: ExecOutput) => Promise<void> = async () => {},
 ) {
   const isCompilerVersionSensitivePackage = (name: string): boolean => {
     return [
@@ -95,23 +94,36 @@ export async function ensureNpmPackageInstalled(
   const preInstallResult = await onPreInstall();
   switch (preInstallResult) {
     case "install":
-      logger.debug(`Install npm package ${fullName}`);
-      await util
-        .install(fullName, [], {
-          onStdioOut: toOutput,
-          onStdioError: toError,
-        })
-        .then(
-          async (output: ExecOutput) => {
-            await onPostInstall(output);
-          },
-          async (err) => {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          cancellable: false,
+        },
+        async (progress) => {
+          logger.debug(`Installing npm package ${fullName}`, [], {
+            showOutput: false,
+            showPopup: false,
+            progress,
+          });
+          try {
+            await util.install(fullName, [], {
+              onStdioOut: toOutput,
+              onStdioError: toError,
+            });
+            logger.debug(`Successfully installed ${fullName}`, [], {
+              showOutput: false,
+              showPopup: false,
+              progress,
+            });
+          } catch (err) {
             logger.debug(
               `Failed to install ${fullName}. Please check the previous logs for details`,
+              [err],
+              { showOutput: false, showPopup: true },
             );
-            await onPostInstall(err);
-          },
-        );
+          }
+        },
+      );
       break;
     case "skip":
       logger.debug(`Skip npm install for ${fullName}`);
@@ -180,6 +192,31 @@ export function createWatchTask(cli: Executable, mainFile: string, outputDir?: s
     "tsp",
     new vscode.ShellExecution(cmd, { cwd }),
   );
+}
+
+export async function execCompile(
+  cli: Executable,
+  mainFile: string,
+  emitter?: string,
+  outputDir?: string,
+): Promise<ExecOutput | undefined> {
+  if (cli === undefined) {
+    logger.error("Failed to create compile command: cli is undefined", [], {
+      showOutput: false,
+      showPopup: true,
+    });
+    return undefined;
+  }
+  mainFile = normalizeSlashInPath(mainFile);
+  const args = [...(cli.args ?? []), "compile", mainFile];
+  if (emitter) {
+    args.push("--emitter", emitter);
+  }
+  if (outputDir) {
+    args.push("--output-dir", `"${outputDir}"`);
+  }
+  const cwd = path.dirname(mainFile);
+  return spawnExecution(cli.command, args, cwd);
 }
 
 export function createCompileTask(cli: Executable, mainFile: string, outputDir?: string) {

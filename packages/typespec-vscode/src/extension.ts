@@ -14,14 +14,14 @@ import YAML from "yaml";
 import logger from "./extension-logger.js";
 import { TypeSpecLogOutputChannel } from "./typespec-log-output-channel.js";
 import {
-  createCompileTask,
   EmitPackageQuickPickItem,
   ensureNpmPackageInstalled,
+  execCompile,
   getMainTspFile,
   loadEmitterOptions,
   recommendedEmitters,
 } from "./util-typespec.js";
-import { createTempDir, executeVscodeTask, normalizeSlash } from "./utils.js";
+import { createTempDir, normalizeSlash } from "./utils.js";
 
 let client: LanguageClient | undefined;
 const openApi3FileCache = new Map<string, string>();
@@ -88,6 +88,7 @@ async function doEmit(
         showPopup: true,
       },
     );
+    return;
   }
 
   let startFile: string | undefined = uri?.fsPath;
@@ -202,78 +203,59 @@ async function doEmit(
     let cancelled = false;
     while (checkPackage) {
       checkPackage = false;
-      await ensureNpmPackageInstalled(
-        e.package,
-        undefined,
-        dirname(uri.fsPath),
-        async () => {
-          const options = {
-            ok: `OK (install ${e.package} by 'node install'`,
-            recheck: `Check again (${e.package} has been installed manually)`,
-            ignore: `Ignore emitter ${e.label}`,
-            cancel: "Cancel",
-          };
-          const selected = await vscode.window.showQuickPick(Object.values(options), {
-            canPickMany: false,
-            ignoreFocusOut: true,
-            placeHolder: `Package '${e.package}' needs to be installed for emitting`,
-            title: `TypeSpec Emit...`,
-          });
+      await ensureNpmPackageInstalled(e.package, undefined, dirname(uri.fsPath), async () => {
+        const options = {
+          ok: `OK (install ${e.package} by 'npm install'`,
+          recheck: `Check again (install ${e.package} manually)`,
+          ignore: `Ignore emitter ${e.label}`,
+          cancel: "Cancel",
+        };
+        const selected = await vscode.window.showQuickPick(Object.values(options), {
+          canPickMany: false,
+          ignoreFocusOut: true,
+          placeHolder: `Package '${e.package}' needs to be installed for emitting`,
+          title: `TypeSpec Emit...`,
+        });
 
-          if (selected === options.ok) {
-            logger.info(`installing ${e.package}...`, [], {
-              showOutput: true,
-              showPopup: false,
-              progress: overallProgress,
-            });
-            return "install";
-          } else if (selected === options.recheck) {
-            checkPackage = true;
-            return "skip";
-          } else if (selected === options.ignore) {
-            ignoredEmitters.push(e);
-            logger.info(`ignore ${e.package}`, [], {
-              showOutput: true,
-              showPopup: false,
-              progress: overallProgress,
-            });
-            return "skip";
-          } else if (selected === options.cancel || !selected) {
-            cancelled = true;
-            logger.info(`Operation canceled by user`, [], {
-              showOutput: true,
-              showPopup: false,
-              progress: overallProgress,
-            });
-            return "skip";
-          } else {
-            logger.error(
-              `Unexpected selected value for installing package ${e.package}: ${selected}`,
-              [],
-              {
-                showOutput: false,
-                showPopup: false,
-              },
-            );
-            cancelled = true;
-            return "skip";
-          }
-        },
-        async (output) => {
-          if (output.exitCode === 0) {
-            logger.info(`successfully installing package/emitter ${e.package}`, [], {
+        if (selected === options.ok) {
+          logger.info(`installing ${e.package}...`, [], {
+            showOutput: true,
+            showPopup: false,
+            progress: overallProgress,
+          });
+          return "install";
+        } else if (selected === options.recheck) {
+          checkPackage = true;
+          return "skip";
+        } else if (selected === options.ignore) {
+          ignoredEmitters.push(e);
+          logger.info(`ignore ${e.package}`, [], {
+            showOutput: true,
+            showPopup: false,
+            progress: overallProgress,
+          });
+          return "skip";
+        } else if (selected === options.cancel || !selected) {
+          cancelled = true;
+          logger.info(`Operation canceled by user`, [], {
+            showOutput: true,
+            showPopup: false,
+            progress: overallProgress,
+          });
+          return "skip";
+        } else {
+          logger.error(
+            `Unexpected selected value for installing package ${e.package}: ${selected}`,
+            [],
+            {
               showOutput: false,
               showPopup: false,
-            });
-          } else {
-            logger.error(`Error when installing package/emitter ${e.package}`, [], {
-              showOutput: true,
-              showPopup: true,
-            });
-            cancelled = true;
-          }
-        },
-      );
+            },
+          );
+          cancelled = true;
+          return "skip";
+        }
+      });
       if (cancelled) {
         return;
       }
@@ -318,18 +300,42 @@ async function doEmit(
     showPopup: false,
     progress: overallProgress,
   });
+  let doc: any = {};
   if (Object.keys(allSupported).length > 0) {
-    const content = fs.readFileSync(configFile);
-    const doc = YAML.parse(content.toString());
-    if (!doc["options"]) {
-      doc["options"] = allSupported;
+    const buffer = fs.readFileSync(configFile);
+    const content = buffer.toString().trim();
+    const lines = content.split("\n");
+    const commentOnlyFile = lines.every((l) => l.trim().startsWith("#"));
+
+    if (content.length === 0 || commentOnlyFile) {
+      doc.options = allSupported;
     } else {
-      doc["options"] = { ...allSupported, ...doc["options"] };
+      doc = YAML.parse(content);
+      if (!doc) {
+        logger.warning("Failed to parse tspconfig.yaml. Please double check.", [], {
+          showOutput: false,
+          showPopup: false,
+        });
+        doc = {};
+      }
+      if (!doc["options"]) {
+        doc["options"] = allSupported;
+      } else {
+        doc["options"] = { ...allSupported, ...doc["options"] };
+      }
     }
     doc["emit"] = selectedEmitters.map((e) => e.package);
     let output = YAML.stringify(doc, undefined, { indent: 2, lineWidth: 0 });
     output = output.replaceAll(TO_BE_COMMENTED, "#").replaceAll(NEWLINE, "\n      # ");
+    if (commentOnlyFile) {
+      // remove emitter, options...
+      output = content + "\n" + output;
+    }
     fs.writeFileSync(configFile, output);
+    logger.info(`Emitter config updated at ${configFile}`, [], {
+      showOutput: false,
+      showPopup: false,
+    });
   }
 
   logger.info("Emitting...", [], {
@@ -337,29 +343,57 @@ async function doEmit(
     showPopup: false,
     progress: overallProgress,
   });
-  const t = createCompileTask(cli!, startFile);
-  if (t) {
-    executeVscodeTask(t).then(
-      (value) => {
-        logger.info("Emitting finished successfully", [], {
-          showOutput: false,
-          showPopup: true,
-          progress: overallProgress,
-        });
-      },
-      (reason) => {
-        logger.error(`Error when emitting: ${reason}`, [], {
-          showOutput: true,
-          showPopup: true,
-        });
-        logger.info("Emitting finished with error. Check the output for details", [], {
-          showOutput: false,
-          showPopup: false,
-          progress: overallProgress,
-        });
-      },
-    );
+  try {
+    const compileOutput = await execCompile(cli, startFile);
+    if (compileOutput && compileOutput?.exitCode === 0) {
+      logger.info(compileOutput?.stdout);
+      logger.info("Emitting finished successfully", [], {
+        showOutput: false,
+        showPopup: true,
+        progress: overallProgress,
+      });
+    } else {
+      if (compileOutput && compileOutput.stderr) {
+        logger.error(compileOutput?.stderr);
+      }
+      logger.error("Emitting finished with error. Check the output for details", [compileOutput], {
+        showOutput: false,
+        showPopup: true,
+        progress: overallProgress,
+      });
+    }
+  } catch (e) {
+    logger.error(`Emitting finished with error. Check the output for details`, [e], {
+      showOutput: false,
+      showPopup: true,
+      progress: overallProgress,
+    });
   }
+
+  // const t = await createCompileTask(cli!, startFile);
+  // spawnExecution(t?.execution.)
+  // if (t) {
+  //   executeVscodeTask(t).then(
+  //     (value) => {
+  //       logger.info("Emitting finished successfully", [], {
+  //         showOutput: false,
+  //         showPopup: true,
+  //         progress: overallProgress,
+  //       });
+  //     },
+  //     (reason) => {
+  //       logger.error(`Error when emitting: ${reason}`, [], {
+  //         showOutput: true,
+  //         showPopup: true,
+  //       });
+  //       logger.info("Emitting finished with error. Check the output for details", [], {
+  //         showOutput: false,
+  //         showPopup: false,
+  //         progress: overallProgress,
+  //       });
+  //     },
+  //   );
+  // }
 }
 
 async function showOpenApi3(context: vscode.ExtensionContext, uri: vscode.Uri) {
@@ -376,42 +410,13 @@ async function showOpenApi3(context: vscode.ExtensionContext, uri: vscode.Uri) {
 
   const dir = dirname(startFile);
   try {
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Window,
-        title: "Checking @typespec/openapi3...",
-        cancellable: false,
-      },
-      async (progress) => {
-        await ensureNpmPackageInstalled(
-          "@typespec/openapi3",
-          undefined,
-          dir,
-          async () => {
-            progress.report({ message: "install @typespec/openapi3...", increment: 10 });
-            return "install";
-          },
-          async (output) => {
-            if (output.exitCode === 0) {
-              progress.report({ message: "finish installing @typespec/openapi3", increment: 100 });
-            } else {
-              progress.report({
-                message: "error when installing @typespec/openapi3. please check Output for detail",
-                increment: 100,
-              });
-              logger.error("Error when installing @typespec/openapi3", [], {
-                showOutput: true,
-                showPopup: true,
-              });
-            }
-          },
-        );
-      },
-    );
+    await ensureNpmPackageInstalled("@typespec/openapi3", undefined, dir, async () => {
+      return "install";
+    });
   } catch (e) {
     logger.error("Error when installing openapi3: \n" + JSON.stringify(e), [], {
       showOutput: true,
-      showPopup: true,
+      showPopup: false,
     });
     return;
   }
