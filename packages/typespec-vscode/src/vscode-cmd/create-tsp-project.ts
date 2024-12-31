@@ -1,6 +1,7 @@
 import type {
   InitProjectConfig,
   InitProjectTemplate,
+  InitProjectTemplateEmitterTemplate,
   InitProjectTemplateLibrarySpec,
 } from "@typespec/compiler";
 import { TIMEOUT } from "dns";
@@ -48,8 +49,16 @@ interface LibraryQuickPickItem extends QuickPickItem {
   version?: string;
 }
 
+interface EmitterQuickPickItem extends QuickPickItem {
+  name: string;
+  emitterTemplate: InitProjectTemplateEmitterTemplate;
+}
+
 const COMPILER_CORE_TEMPLATES = "compiler-core-templates";
-export async function createTypeSpecProject(client: TspLanguageClient | undefined) {
+export async function createTypeSpecProject(
+  client: TspLanguageClient | undefined,
+  outputChannel: vscode.OutputChannel,
+) {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Window,
@@ -156,13 +165,18 @@ export async function createTypeSpecProject(client: TspLanguageClient | undefine
         return;
       }
 
+      const selectedEmitters = await selectEmitters(info);
+      if (selectedEmitters === undefined) {
+        logger.info("Creating TypeSpec Project cancelled when selecting emitters.");
+        return;
+      }
+
       const inputs = await setInputs(info);
       if (inputs === undefined) {
         logger.info("Creating TypeSpec Project cancelled when setting inputs.");
         return;
       }
 
-      // TODO: add support for emitters picking
       const initTemplateConfig: InitProjectConfig = {
         template: info.template!,
         directory: selectedRootFolder,
@@ -172,7 +186,7 @@ export async function createTypeSpecProject(client: TspLanguageClient | undefine
         parameters: inputs ?? {},
         includeGitignore: includeGitignore,
         libraries: librariesToInclude,
-        emitters: {},
+        emitters: selectedEmitters,
       };
       const initResult = await initProject(client, initTemplateConfig);
       if (!initResult) {
@@ -190,11 +204,38 @@ export async function createTypeSpecProject(client: TspLanguageClient | undefine
         // just ignore the result from tsp install. We will open the project folder anyway.
         await tspInstall(client, selectedRootFolder);
       }
-      vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(selectedRootFolder), {
-        forceNewWindow: false,
-        forceReuseWindow: true,
-        noRecentEntry: false,
-      });
+
+      const msg = Object.entries(selectedEmitters)
+        .filter(([k, e]) => !isWhitespaceStringOrUndefined(e.message))
+        .map(([k, e]) => `\t${k}: \n\t\t${e.message}`)
+        .join("\n");
+
+      const openProjectFolder = () => {
+        vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(selectedRootFolder), {
+          forceNewWindow: false,
+          forceReuseWindow: true,
+          noRecentEntry: false,
+        });
+      };
+
+      if (!isWhitespaceStringOrUndefined(msg)) {
+        logger.warning("Message from emitters: \n" + msg);
+        const VIEW_DETAIL_MESSAGE = "View detail message";
+        const result = await vscode.window.showWarningMessage(
+          "Please review the messages from emitters: \n" + msg,
+          VIEW_DETAIL_MESSAGE,
+        );
+        if (result === VIEW_DETAIL_MESSAGE) {
+          logger.info("User selected to view detail message from emitters (as above)", [], {
+            showOutput: true,
+          });
+        } else {
+          openProjectFolder();
+        }
+      } else {
+        openProjectFolder();
+      }
+      logger.info(`Creating TypeSpec Project completed successfully in ${selectedRootFolder}.`);
       return;
     },
   );
@@ -410,6 +451,42 @@ async function selectLibraries(
     ignoreFocusOut: true,
   });
   return librariesToUpgrade?.map((x) => ({ name: x.name, version: x.version }));
+}
+
+async function selectEmitters(
+  info: InitTemplateInfo,
+): Promise<Record<string, InitProjectTemplateEmitterTemplate> | undefined> {
+  if (!info.template.emitters || typeof info.template.emitters !== "object") {
+    return {};
+  }
+
+  const emitterList: EmitterQuickPickItem[] = Object.entries(info.template.emitters).map(
+    ([name, emitter]) => {
+      return {
+        label: emitter.version ? `${name} (ver: ${emitter.version})` : name,
+        name: name,
+        detail: emitter.description,
+        picked: emitter.selected,
+        emitterTemplate: emitter,
+      };
+    },
+  );
+  if (emitterList.length === 0) {
+    return {};
+  }
+
+  const selectedEmitters = await vscode.window.showQuickPick<EmitterQuickPickItem>(emitterList, {
+    title: "Select emitters?",
+    canPickMany: true,
+    placeHolder: "Select emitters?",
+    ignoreFocusOut: true,
+  });
+
+  if (!selectedEmitters) {
+    return undefined;
+  }
+
+  return Object.fromEntries(selectedEmitters.map((x) => [x.name, x.emitterTemplate]));
 }
 
 async function selectTemplate(
