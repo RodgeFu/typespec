@@ -55,10 +55,7 @@ interface EmitterQuickPickItem extends QuickPickItem {
 }
 
 const COMPILER_CORE_TEMPLATES = "compiler-core-templates";
-export async function createTypeSpecProject(
-  client: TspLanguageClient | undefined,
-  outputChannel: vscode.OutputChannel,
-) {
+export async function createTypeSpecProject(client: TspLanguageClient | undefined) {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Window,
