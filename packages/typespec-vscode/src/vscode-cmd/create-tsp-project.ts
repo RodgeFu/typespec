@@ -9,8 +9,9 @@ import { readdir } from "fs/promises";
 import * as semver from "semver";
 import vscode, { OpenDialogOptions, QuickPickItem } from "vscode";
 import { State } from "vscode-languageclient";
+import { ExtensionStateManager } from "../extension-state-manager.js";
 import logger from "../log/logger.js";
-import { getBaseFileName, getDirectoryPath, joinPaths } from "../path-utils.js";
+import { getBaseFileName, getDirectoryPath, joinPaths, normalizePath } from "../path-utils.js";
 import { TspLanguageClient } from "../tsp-language-client.js";
 import {
   CommandName,
@@ -55,7 +56,10 @@ interface EmitterQuickPickItem extends QuickPickItem {
 }
 
 const COMPILER_CORE_TEMPLATES = "compiler-core-templates";
-export async function createTypeSpecProject(client: TspLanguageClient | undefined) {
+export async function createTypeSpecProject(
+  client: TspLanguageClient | undefined,
+  stateManager: ExtensionStateManager,
+) {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Window,
@@ -207,33 +211,36 @@ export async function createTypeSpecProject(client: TspLanguageClient | undefine
         .map(([k, e]) => `\t${k}: \n\t\t${e.message}`)
         .join("\n");
 
-      const openProjectFolder = () => {
-        vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(selectedRootFolder), {
-          forceNewWindow: false,
-          forceReuseWindow: true,
-          noRecentEntry: false,
-        });
-      };
-
       if (!isWhitespaceStringOrUndefined(msg)) {
-        logger.warning("Message from emitters: \n" + msg);
-        const VIEW_DETAIL_MESSAGE = "View detail message";
-        const result = await vscode.window.showWarningMessage(
-          "Please review the messages from emitters: \n" + msg,
-          VIEW_DETAIL_MESSAGE,
-        );
-        if (result === VIEW_DETAIL_MESSAGE) {
-          logger.info("User selected to view detail message from emitters (as above)", [], {
-            showOutput: true,
-          });
+        const p = normalizePath(selectedRootFolder);
+        if (
+          vscode.workspace.workspaceFolders?.find((x) => normalizePath(x.uri.fsPath) === p) ===
+          undefined
+        ) {
+          // if the folder is not opened as workspace, persist the message to extension state because
+          // openProjectFolder will reinitialize the extension.
+          stateManager.saveStartUpMessage(
+            {
+              notification:
+                "Please review the message from emitters when creating TypeSpec Project",
+              detail: msg,
+              level: "warn",
+            },
+            selectedRootFolder,
+          );
         } else {
-          openProjectFolder();
+          logger.warning("Please review the message from emitters\n", [msg], {
+            showPopup: true,
+            notificationButtonText: "Review in Output",
+          });
         }
-      } else {
-        openProjectFolder();
       }
+      vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(selectedRootFolder), {
+        forceNewWindow: false,
+        forceReuseWindow: true,
+        noRecentEntry: false,
+      });
       logger.info(`Creating TypeSpec Project completed successfully in ${selectedRootFolder}.`);
-      return;
     },
   );
 }
