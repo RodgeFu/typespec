@@ -957,7 +957,7 @@ function createOAPIEmitter(
   ) {
     schemaMap ??= new Map<string, OpenAPI3MediaType[]>();
     for (const data of responses) {
-      if (data.body === undefined) {
+      if (data.body === undefined || isVoidType(data.body.type)) {
         continue;
       }
       obj.content ??= {};
@@ -1844,6 +1844,7 @@ function serializeDocument(root: OpenAPI3Document, fileType: FileType): string {
         singleQuote: true,
         aliasDuplicateObjects: false,
         lineWidth: 0,
+        compat: "yaml-1.1",
       });
   }
 }
