@@ -4,6 +4,8 @@ import "./pre-extension-activate.js";
 
 import vscode, { commands, ExtensionContext, TabInputText } from "vscode";
 import { State } from "vscode-languageclient";
+import aiActionManager from "./ai-action-manager.js";
+import { createAiAssistantHandler, mergeContentProvider } from "./ai-assistant.js";
 import { createCodeActionProvider } from "./code-action-provider.js";
 import { ExtensionStateManager } from "./extension-state-manager.js";
 import { ExtensionLogListener, getPopupAction } from "./log/extension-log-listener.js";
@@ -23,6 +25,7 @@ import {
   SettingName,
 } from "./types.js";
 import { isWhitespaceStringOrUndefined } from "./utils.js";
+import { aiAnalyzeCode } from "./vscode-cmd/ai-analyze-code.js";
 import { createTypeSpecProject } from "./vscode-cmd/create-tsp-project.js";
 import { emitCode } from "./vscode-cmd/emit-code/emit-code.js";
 import { importFromOpenApi3 } from "./vscode-cmd/import-from-openapi3.js";
@@ -46,6 +49,19 @@ export async function activate(context: ExtensionContext) {
 
   context.subscriptions.push(createCodeActionProvider());
 
+  const providerRegistration = vscode.workspace.registerTextDocumentContentProvider(
+    mergeContentProvider.SCHEMA,
+    mergeContentProvider,
+  );
+
+  context.subscriptions.push(providerRegistration);
+
+  context.subscriptions.push(
+    commands.registerCommand(CommandName.TakeAiAction, async (actionId: string, param: any) => {
+      return await aiActionManager.takeAction(actionId, param);
+    }),
+  );
+
   context.subscriptions.push(
     commands.registerCommand(CommandName.ShowOutputChannel, () => {
       outputChannel.show(true /*preserveFocus*/);
@@ -64,7 +80,7 @@ export async function activate(context: ExtensionContext) {
 
   /* emit command. */
   context.subscriptions.push(
-    commands.registerCommand(CommandName.EmitCode, async (uri: vscode.Uri) => {
+    commands.registerCommand(CommandName.EmitCode, async (uri: vscode.Uri, emitters: any) => {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Window,
@@ -75,7 +91,7 @@ export async function activate(context: ExtensionContext) {
           await telemetryClient.doOperationWithTelemetry<ResultCode>(
             TelemetryEventName.EmitCode,
             async (tel): Promise<ResultCode> => {
-              return await emitCode(context, uri, tel);
+              return await emitCode(context, uri, tel, emitters);
             },
           );
         },
@@ -152,6 +168,53 @@ export async function activate(context: ExtensionContext) {
       );
     }),
   );
+
+  context.subscriptions.push(
+    commands.registerCommand(CommandName.AiAnalyzeCode, async () => {
+      await telemetryClient.doOperationWithTelemetry(
+        TelemetryEventName.AiAnalyzeCode,
+        async (tel) => {
+          return await aiAnalyzeCode(context, client!, tel);
+        },
+      );
+    }),
+  );
+
+  const aiDiagnostics = vscode.languages.createDiagnosticCollection("typespec-ai");
+  context.subscriptions.push(aiDiagnostics);
+
+  // create participant
+  const ai = vscode.chat.createChatParticipant(
+    "typespec.ai-assistant",
+    createAiAssistantHandler(context, aiDiagnostics),
+  );
+
+  ai.followupProvider = {
+    provideFollowups(result: any, context: vscode.ChatContext, token: vscode.CancellationToken) {
+      return [
+        {
+          label: "Fix all TypeSpec issues",
+          command: "fix",
+          participant: "typespec.ai-assistant",
+          prompt: "",
+        } satisfies vscode.ChatFollowup,
+        {
+          label: "Review my TypeSpec code",
+          command: "review",
+          participant: "typespec.ai-assistant",
+          prompt: "",
+        } satisfies vscode.ChatFollowup,
+        {
+          label: "Emit code from TypeSpec",
+          participant: "typespec.ai-assistant",
+          prompt: "Emit code from TypeSpec",
+        } satisfies vscode.ChatFollowup,
+      ];
+    },
+  };
+
+  // add icon to participant
+  ai.iconPath = vscode.Uri.joinPath(context.extensionUri, "icons/logo.png");
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(async (e: vscode.ConfigurationChangeEvent) => {
@@ -251,15 +314,26 @@ function showStartUpMessages(stateManager: ExtensionStateManager) {
       if (isWhitespaceStringOrUndefined(msg.detail)) {
         logger.log(msg.level, msg.popupMessage, [], {
           showPopup: true,
-          popupButtonText: "",
+          // quick change for POC. start-up message is a general effort
+          // we need to have a way to know this is a new project and then popup
+          popupButtonText: "Start coding with Copilot",
+          onPopupButtonClicked: () => {
+            vscode.commands.executeCommand("workbench.action.chat.open", {
+              query: "@typespec /hello",
+            });
+          },
         });
       } else {
         const SHOW_DETAIL = "View Details in Output";
         const popupAction = getPopupAction(msg.level);
         if (popupAction) {
-          popupAction(msg.popupMessage, SHOW_DETAIL).then((action) => {
+          popupAction(msg.popupMessage, SHOW_DETAIL, "Start coding with Copilot").then((action) => {
             if (action === SHOW_DETAIL) {
               outputChannel.show(true);
+            } else if (action === "Start coding with Copilot") {
+              vscode.commands.executeCommand("workbench.action.chat.open", {
+                query: "@typespec /hello",
+              });
             }
             // log the start up message to Output no matter user clicked the button or not
             // and there are many logs coming when starting the extension, so

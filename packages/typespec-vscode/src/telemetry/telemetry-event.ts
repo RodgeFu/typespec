@@ -17,6 +17,7 @@ export enum TelemetryEventName {
   ServerPathSettingChanged = "server-path-changed",
   OperationDetail = "operation-detail",
   PreviewOpenApi3 = "preview-openapi3",
+  AiAnalyzeCode = "ai-analyze-code",
 }
 
 export interface TelemetryEventBase {

@@ -479,6 +479,7 @@ export async function emitCode(
   context: vscode.ExtensionContext,
   uri: vscode.Uri,
   tel: OperationTelemetryEvent,
+  emitters?: Emitter[],
 ): Promise<ResultCode> {
   let tspProjectFile: string = "";
   if (!uri) {
@@ -545,6 +546,9 @@ export async function emitCode(
     configYaml = tryParseYaml(content.toString()) ?? configYaml;
   }
 
+  if (emitters && emitters.length > 0) {
+    return await doEmit(tspProjectFile, emitters, tel);
+  }
   let existingEmitters;
   try {
     const emitNode = configYaml.get("emit");

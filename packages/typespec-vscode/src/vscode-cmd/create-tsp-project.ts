@@ -290,8 +290,20 @@ export async function createTypeSpecProject(
               {
                 showPopup: true,
                 popupButtonText: isWhitespaceStringOrUndefined(emitterMessage)
-                  ? ""
-                  : "View Details in Output",
+                  ? "Start code with Copilot"
+                  : "View Details in Output | Start code with Copilot",
+                onPopupButtonClicked: (value: string) => {
+                  if (value === "Start code with Copilot") {
+                    vscode.commands.executeCommand(
+                      "workbench.action.chat.open" /*"workbench.action.chat.openEditSession"*/,
+                      {
+                        query: "@typespec /hello",
+                      },
+                    );
+                    return true;
+                  }
+                  return false;
+                },
               },
             );
 

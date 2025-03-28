@@ -9,7 +9,7 @@ export interface ExtensionLogOptions extends LogOptions {
   /** the text of the button in the popup notification, default is 'View details in Output', "" to remove the button */
   popupButtonText?: string;
   /** callback when the button in the popup notification is clicked, default is to open the TypeSpec Output */
-  onPopupButtonClicked?: () => void;
+  onPopupButtonClicked?: (value: string) => boolean;
 }
 
 export function getPopupAction(loglevel: LogLevel) {
@@ -63,13 +63,15 @@ export class ExtensionLogListener implements LogListener {
 
     if (showPopup && popupAction) {
       const buttonText = popupButtonText ?? VIEW_DETAIL_IN_OUTPUT;
-      void popupAction(log.message, buttonText).then((value) => {
-        if (value === buttonText) {
-          if (onPopupButtonClicked) {
-            onPopupButtonClicked();
-          } else {
-            this.outputChannel?.show(true /*preserveFocus*/);
+      const buttons = buttonText.split("|");
+      void popupAction(log.message, ...buttons).then((value) => {
+        if (onPopupButtonClicked) {
+          if (onPopupButtonClicked(value)) {
+            return;
           }
+        }
+        if (value === VIEW_DETAIL_IN_OUTPUT) {
+          this.outputChannel?.show(true /*preserveFocus*/);
         }
       });
     }

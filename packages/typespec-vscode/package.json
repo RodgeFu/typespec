@@ -38,6 +38,43 @@
   "icon": "./icons/logo.png",
   "telemetryKey": "00000000-0000-0000-0000-000000000000",
   "contributes": {
+    "chatParticipants": [
+      {
+        "id": "typespec.ai-assistant",
+        "fullName": "Typespec assistant",
+        "name": "typespec",
+        "description": "I can help with TypeSpec language and all the quesitions related to *.tsp and tspconfig.yaml files.",
+        "isSticky": true,
+        "disambiguation": [
+          {
+            "description": "TypeSpec assistant to help with TypeSpec language. \n\nI can help with TypeSpec language, *.tsp and tspconfig.yaml files.",
+            "category": "typespec_question",
+            "examples": [
+              "What is TypeSpec?",
+              "How to use TypeSpec?",
+              "I want create a TypeSpec project?",
+              "I want to emit code from TypeSpec.",
+              "I want to import OpenAPI3 to TypeSpec.",
+              "I want to show OpenAPI3 documentation."
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "name": "hello",
+            "description": "Say hello to the assistant."
+          },
+          {
+            "name": "fix",
+            "description": "Fix errors in the code."
+          },
+          {
+            "name": "review",
+            "description": "Review the code and provide suggestions."
+          }
+        ]
+      }
+    ],
     "viewsWelcome": [
       {
         "view": "explorer",
@@ -195,6 +232,16 @@
       {
         "command": "typespec.showOpenApi3",
         "title": "Show OpenAPI3 Documentation",
+        "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.ai.analyze.code",
+        "title": "Analyze Code with AI",
+        "category": "TypeSpec"
+      },
+      {
+        "command": "typespec.ai.assist.takeAction",
+        "title": "Take action for ai",
         "category": "TypeSpec"
       }
     ],

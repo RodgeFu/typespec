@@ -1,6 +1,6 @@
 import type { ModuleResolutionResult, PackageJson, ResolveModuleHost } from "@typespec/compiler";
 import { spawn, SpawnOptions } from "child_process";
-import { mkdtemp, readdir, readFile, realpath, stat } from "fs/promises";
+import { mkdtemp, readdir, readFile, realpath, stat, writeFile } from "fs/promises";
 import { dirname } from "path";
 import { CancellationToken } from "vscode";
 import { Executable } from "vscode-languageclient/node.js";
@@ -135,6 +135,16 @@ export async function tryReadFile(path: string): Promise<string | undefined> {
   } catch (e) {
     logger.debug(`Failed to read file: ${path}`, [e]);
     return undefined;
+  }
+}
+
+export async function tryWriteFile(path: string, content: string): Promise<boolean> {
+  try {
+    await writeFile(path, content, "utf-8");
+    return true;
+  } catch (e) {
+    logger.debug(`Failed to write file: ${path}`, [e]);
+    return false;
   }
 }
 
@@ -468,4 +478,8 @@ export function throttle<T extends (...args: any[]) => any>(fn: T, blockInMs: nu
       fn.apply(this, args);
     }
   } as T;
+}
+
+export function newGuid() {
+  return crypto.randomUUID();
 }
