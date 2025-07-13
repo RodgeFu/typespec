@@ -6,9 +6,20 @@ import type {
   InitProjectTemplate,
   ServerInitializeResult,
 } from "@typespec/compiler";
-import { InternalCompileResult } from "@typespec/compiler/internals";
+import {
+  ChatCompleteOptions,
+  ChatMessage,
+  InternalCompileResult,
+} from "@typespec/compiler/internals";
 import { inspect } from "util";
-import { ExtensionContext, LogOutputChannel, RelativePattern, workspace } from "vscode";
+import {
+  ExtensionContext,
+  LanguageModelChatMessage,
+  lm,
+  LogOutputChannel,
+  RelativePattern,
+  workspace,
+} from "vscode";
 import {
   Executable,
   LanguageClient,
@@ -269,6 +280,48 @@ export class TspLanguageClient {
     const name = "TypeSpec";
     const id = "typespec";
     const lc = new LanguageClient(id, name, { run: exe, debug: exe }, options);
+    lc.onRequest(
+      "custom/chatCompletion",
+      async (params: { messages: ChatMessage[]; options: ChatCompleteOptions }) => {
+        const family = params.options.modelPreferences?.[0] ?? "gpt-4o";
+        const models = await lm.selectChatModels({
+          family,
+        });
+        if (models.length === 0) {
+          logger.error(
+            `No chat models returned. Please check whether language model is available. It may take some time for language models to be ready to use after vscode is started. Language model family used: ${family}.`,
+          );
+          return undefined;
+        }
+        try {
+          const response = await models[0].sendRequest(
+            params.messages.map((m) => {
+              if (m.role === "user") {
+                return LanguageModelChatMessage.User(m.message);
+              } else if (m.role === "assist") {
+                return LanguageModelChatMessage.Assistant(m.message);
+              } else {
+                logger.error(`Unknown chat message role: ${m.role}. Default to use User role.`);
+                return LanguageModelChatMessage.User(m.message);
+              }
+            }),
+          );
+          let fullResponse = "";
+          for await (const chunk of response.text) {
+            fullResponse += chunk;
+          }
+          // TODO: support stream mode? seems not necessary because we need to wait for the full response anyway and no way to
+          // show the progress to end user.
+          return fullResponse;
+        } catch (e) {
+          logger.error(
+            `Error when sending chat completion request to model ${models[0].name}: ${inspect(e)}`,
+            [e],
+          );
+          return undefined;
+        }
+      },
+    );
     return new TspLanguageClient(lc, exe);
   }
 

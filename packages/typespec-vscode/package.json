@@ -79,6 +79,16 @@
             "description": "Path to 'tsp-server' command that runs the TypeSpec language server. If not specified, then 'tsp-server' will be resolved in following sequence:\n\n1. from workspace node_modules folder\nExample: ${workspaceFolder}/node_modules/@typespec/compiler\n\n2. from PATH environment variable\nExample: /usr/local/bin/tsp-server",
             "scope": "machine-overridable"
           },
+          "typespec.lsp.entrypoint": {
+            "type": "array",
+            "default": null,
+            "description": "List of entrypoints to search in order",
+            "scope": "machine-overridable",
+            "items": {
+              "type": "string",
+              "description": "Entrypoint file name, i.e. main.tsp, client.tsp, etc. If not specified, main.tsp will be used as the default entrypoint."
+            }
+          },
           "typespec.initTemplatesUrls": {
             "type": "array",
             "default": [],

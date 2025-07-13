@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "fs/promises";
 import inspector from "inspector";
 import { join } from "path";
 import { fileURLToPath } from "url";
-import { inspect } from "util";
+import { format, inspect } from "util";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import {
   ApplyWorkspaceEditParams,
@@ -17,7 +17,15 @@ import { NodeHost } from "../core/node-host.js";
 import { typespecVersion } from "../manifest.js";
 import { createClientConfigProvider } from "./client-config-provider.js";
 import { createServer } from "./serverlib.js";
-import { CustomRequestName, Server, ServerHost, ServerLog } from "./types.js";
+import {
+  ChatCompleteOptions,
+  ChatMessage,
+  CustomRequestName,
+  LmProvider,
+  Server,
+  ServerHost,
+  ServerLog,
+} from "./types.js";
 
 let server: Server | undefined = undefined;
 
@@ -41,6 +49,19 @@ function main() {
   let clientHasWorkspaceFolderCapability = false;
   const connection = createConnection(ProposedFeatures.all);
   const documents = new TextDocuments(TextDocument);
+
+  // eslint-disable-next-line no-console
+  console.log = (message?: any, ...optionalParams: any[]) => {
+    connection.console.info(format(message, ...optionalParams));
+  };
+  // eslint-disable-next-line no-console
+  console.info = (message?: any, ...optionalParams: any[]) => {
+    connection.console.info(format(message, ...optionalParams));
+  };
+  // eslint-disable-next-line no-console
+  console.debug = (message?: any, ...optionalParams: any[]) => {
+    connection.console.debug(format(message, ...optionalParams));
+  };
 
   const host: ServerHost = {
     compilerHost: NodeHost,
@@ -146,6 +167,30 @@ function main() {
 
   documents.onDidChangeContent(profile(s.checkChange));
   documents.onDidClose(profile(s.documentClosed));
+
+  const lmProvider: LmProvider = {
+    chatComplete: async (
+      messages: ChatMessage[],
+      options: ChatCompleteOptions,
+    ): Promise<string> => {
+      host.log({
+        level: "debug",
+        message: `chatComplete is called with messages: ${JSON.stringify(messages)}`,
+      });
+      try {
+        const r = await connection.sendRequest("custom/chatCompletion", { messages, options });
+        return r as string;
+      } catch (e) {
+        host.log({
+          level: "error",
+          message: `chatComplete failed with error: ${inspect(e)}`,
+        });
+        return "";
+      }
+    },
+  };
+
+  (globalThis as any).TspExLmProvider = lmProvider;
 
   documents.listen(connection);
   connection.listen();

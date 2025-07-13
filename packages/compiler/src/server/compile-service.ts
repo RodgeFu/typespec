@@ -130,7 +130,19 @@ export function createCompileService({
     },
   ): Promise<CompileResult | undefined> {
     const path = await fileService.getPath(document);
-    const mainFile = await getMainFileForDocument(path);
+    const entrypointFileArray = [...(clientConfigsProvider?.config?.lsp?.entrypoint ?? [])];
+    if (!entrypointFileArray.includes("main.tsp")) {
+      entrypointFileArray.push("main.tsp");
+    }
+    let entrypointFilePath = undefined;
+    for (const entrypointFile of entrypointFileArray ?? []) {
+      const found = await getMainFileForDocument(path, entrypointFile);
+      if (found !== path) {
+        entrypointFilePath = found;
+        break;
+      }
+    }
+    const mainFile = entrypointFilePath ?? path;
     const config = await getConfig(mainFile);
     configFilePath = config.filename;
     log({ level: "debug", message: `config resolved`, detail: config });
@@ -323,7 +335,10 @@ export function createCompileService({
    * do not exist in a directory that could pull them in via another entry
    * point.
    */
-  async function getMainFileForDocument(path: string) {
+  async function getMainFileForDocument(
+    path: string,
+    mainFileName: string = "main.tsp",
+  ): Promise<string> {
     if (path.startsWith("untitled:")) {
       log({ level: "debug", message: `untitled document treated as its own main file: ${path}` });
       return path;
@@ -333,7 +348,7 @@ export function createCompileService({
     const options = { allowFileNotFound: true };
 
     while (true) {
-      let mainFile = "main.tsp";
+      let mainFile = mainFileName;
       let pkg: any;
       const pkgPath = joinPaths(dir, "package.json");
       const cached = await fileSystemCache.get(pkgPath);

@@ -7,7 +7,7 @@ import { createDiagnostic } from "./messages.js";
 import { NameResolver } from "./name-resolver.js";
 import type { Program } from "./program.js";
 import { EventEmitter, mapEventEmitterToNodeListener, navigateProgram } from "./semantic-walker.js";
-import { startTimer, time } from "./stats.js";
+import { startTimer, timeAsync } from "./stats.js";
 import {
   Diagnostic,
   DiagnosticMessages,
@@ -27,7 +27,7 @@ type LinterLibraryInstance = { linter: LinterResolvedDefinition };
 export interface Linter {
   extendRuleSet(ruleSet: LinterRuleSet): Promise<readonly Diagnostic[]>;
   registerLinterLibrary(name: string, lib?: LinterLibraryInstance): void;
-  lint(): LinterResult;
+  lint(): Promise<LinterResult>;
 }
 
 export interface LinterStats {
@@ -158,7 +158,7 @@ export function createLinter(
     return diagnostics.diagnostics;
   }
 
-  function lint(): LinterResult {
+  async function lint(): Promise<LinterResult> {
     const diagnostics = createDiagnosticCollector();
     const eventEmitter = new EventEmitter<SemanticNodeListener>();
     const stats: LinterStats = {
@@ -179,14 +179,16 @@ export function createLinter(
       const listener = rule.create(createLinterRuleContext(program, rule, diagnostics));
       stats.runtime.rules[rule.id] = createTiming.end();
       for (const [name, cb] of Object.entries(listener)) {
-        const timedCb = (...args: any[]) => {
-          const duration = time(() => (cb as any)(...args));
+        const timedCb = async (...args: any[]) => {
+          const duration = await timeAsync(async () => {
+            await (cb as any)(...args);
+          });
           stats.runtime.rules[rule.id] += duration;
         };
         eventEmitter.on(name as any, timedCb);
       }
     }
-    navigateProgram(program, mapEventEmitterToNodeListener(eventEmitter));
+    await navigateProgram(program, mapEventEmitterToNodeListener(eventEmitter));
     stats.runtime.total = timer.end();
     return { diagnostics: diagnostics.diagnostics, stats };
   }

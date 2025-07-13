@@ -3,6 +3,7 @@ import { ServerHost } from "./types.js";
 
 interface LSPConfig {
   emit?: string[];
+  entrypoint?: string[];
 }
 
 interface Config {
@@ -36,6 +37,7 @@ export function createClientConfigProvider(): ClientConfigProvider {
       config = {
         lsp: {
           emit: configs?.lsp?.emit,
+          entrypoint: configs?.lsp?.entrypoint,
         },
       };
 
@@ -45,6 +47,7 @@ export function createClientConfigProvider(): ClientConfigProvider {
           config = {
             lsp: {
               emit: newConfigs?.lsp?.emit,
+              entrypoint: newConfigs?.lsp?.entrypoint,
             },
           };
         }
