@@ -5,20 +5,22 @@ import { logger } from "./log/logger.js";
 
 export function tryParseConnectionString(cs: string) {
   const result: Record<string, string> = {};
-  cs.split(";").forEach((part) => {
-    const index = part.indexOf("=");
-    if (index < 0) {
-      logger.error(`Invalid connection string: ${cs}`);
-      return undefined;
-    }
-    const key = part.substring(0, index).trim();
-    const value = part.substring(index + 1).trim();
-    if (!key || !value) {
-      logger.error(`Invalid connection string: ${cs}`);
-      return undefined;
-    }
-    result[key] = value;
-  });
+  cs.split(";")
+    .filter((s) => s.trim().length > 0)
+    .forEach((part) => {
+      const index = part.indexOf("=");
+      if (index < 0) {
+        logger.error(`Invalid connection string: ${cs}`);
+        return undefined;
+      }
+      const key = part.substring(0, index).trim();
+      const value = part.substring(index + 1).trim();
+      if (!key || !value) {
+        logger.error(`Invalid connection string: ${cs}`);
+        return undefined;
+      }
+      result[key] = value;
+    });
   return result;
 }
 

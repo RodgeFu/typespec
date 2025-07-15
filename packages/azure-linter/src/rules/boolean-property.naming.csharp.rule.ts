@@ -11,6 +11,7 @@ import z from "zod";
 import { ENV_VAR_LM_PROVIDER_CONNECTION_STRING, getLmProvider } from "../lm/lm-provider.js";
 import { askLanguageModeWithRetry } from "../lm/lm-utils.js";
 import { zLmResponseBasic } from "../lm/types.js";
+import { logger } from "../log/logger.js";
 
 const zRenameRespones = zLmResponseBasic.merge(
   z.object({
@@ -23,7 +24,7 @@ const zRenameRespones = zLmResponseBasic.merge(
     suggestedNames: z
       .array(z.string())
       .describe(
-        "An array of suggested names for the boolean property if it needs to be changed. The suggested names must start with a verb like 'Is', 'Has', 'Can', etc. and can describe the property well. The suggested names should be listed in a way that the first one is the most preferred name.",
+        "An array of suggested names for the boolean property if it needs to be changed. The suggested names must start with a verb like 'Is', 'Has', 'Can', etc. and can describe the property well. The suggested names should be listed in a way that the first one is the most preferred name. Provide 3 suggestions at most.",
       ),
   }),
 );
@@ -34,7 +35,7 @@ const booleanPropertyStartsWithVerbRule = createRule({
   description: "Make sure boolean property's name starts with verb.",
   messages: {
     default: "To be added",
-    lmProviderNotAvailable: `Language model provider is not available. Please ensure env variable ${ENV_VAR_LM_PROVIDER_CONNECTION_STRING} is set property or you are in VSCode with Typespec extension installed`,
+    lmProviderNotAvailable: `Unable to do linter check using language model which is not available. Please ensure env variable ${ENV_VAR_LM_PROVIDER_CONNECTION_STRING} is set property or you are in VSCode with Typespec extension installed`,
     errorOccurs: paramMessage`Unexpected error occurs when checking boolean property '${"modelName"}.${"propName"}'. You may check console or VSCode TypeSpec Output logs for more details. Error: ${"error"}`,
     noLmResponse: paramMessage`No response from Language Model when checking boolean property '${"modelName"}.${"propName"}', please check whether the language model is available and retry again.`,
     renameWithoutSuggestions: paramMessage`Boolean property '${"modelName"}.${"propName"}' should start with a verb, but no suggestions were provided by languange model.`,
@@ -139,7 +140,7 @@ const booleanPropertyStartsWithVerbRule = createRule({
         }
         const message = `Check boolean property naming '${propName}', if the property name doesn't start with a verb like 'Is', 'Has', 'Can' or can't describe itself well, MUST suggest a few new name that starts with a verb like 'Is', 'Has', 'Can'..., and can describe the property well and in pascal case.\n${docMsg}`;
 
-        console.debug(
+        logger.debug(
           `Start calling askLanguageModeWithRetry for boolean property ${property.model?.name}.${propName} with message: ${message}`,
         );
 
