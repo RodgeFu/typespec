@@ -24,7 +24,7 @@ export function tryParseConnectionString(cs: string) {
   return result;
 }
 
-export function tryRepairAndParseJson(jsonStr: string | undefined): any | undefined {
+export function tryRepairAndParseJson<T>(jsonStr: string | undefined): T | undefined {
   if (!jsonStr) {
     return undefined;
   }

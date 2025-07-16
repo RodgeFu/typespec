@@ -1221,8 +1221,16 @@ export function createServer(
         const codeFix = diag?.codefixes?.find((x) => x.id === fixId);
         if (codeFix) {
           const edits = await resolveCodeFix(codeFix);
-          const vsEdits = convertCodeFixEdits(edits);
-          await host.applyEdit({ changes: { [documentUri]: vsEdits } });
+          //const vsEdits = convertCodeFixEdits(edits);
+          const changes: Record<string, TextEdit[]> = {};
+          edits.forEach((edit) => {
+            const uri = fileService.getURL(edit.file.path) ?? documentUri;
+            if (!changes[uri]) {
+              changes[uri] = [];
+            }
+            changes[uri].push(convertCodeFixEdit(edit));
+          });
+          await host.applyEdit({ changes });
         }
       }
     }

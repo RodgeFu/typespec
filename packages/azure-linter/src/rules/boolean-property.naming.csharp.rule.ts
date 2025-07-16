@@ -1,4 +1,12 @@
-import { createRule, DiagnosticTarget, getSourceLocation, Namespace, NoTarget, paramMessage } from "@typespec/compiler";
+import {
+  createRule,
+  DiagnosticTarget,
+  getSourceLocation,
+  getTypeName,
+  Namespace,
+  NoTarget,
+  paramMessage,
+} from "@typespec/compiler";
 import {
   getFirstAncestor,
   IdentifierNode,
@@ -64,18 +72,6 @@ const booleanPropertyStartsWithVerbRule = createRule({
           return; // Only check boolean properties
         }
 
-        // Shortcut for property name already starts with common boolean verbs
-        const propNameWords = propName.split(/(?=[A-Z])/).filter((word) => word.length > 0);
-        if (propNameWords.length > 0) {
-          const firstWord = propNameWords[0].toLowerCase();
-          if (firstWord === "is" || firstWord === "can" || firstWord === "has") {
-            console.debug(
-              `Skipping boolean property '${propName}' as it already starts with a common boolean verb: ${firstWord}`,
-            );
-            return;
-          }
-        }
-
         const srcFile = getSourceLocation(property.node);
         const tspFileContext = context.program.getSourceFileLocationContext(srcFile.file);
         // Do we still need to worry about node_modules?
@@ -126,6 +122,18 @@ const booleanPropertyStartsWithVerbRule = createRule({
               csharpClientNameDec = dec;
               propName = newName;
             }
+          }
+        }
+
+        // Shortcut for property name already starts with common boolean verbs
+        const propNameWords = propName.split(/(?=[A-Z])/).filter((word) => word.length > 0);
+        if (propNameWords.length > 0) {
+          const firstWord = propNameWords[0].toLowerCase();
+          if (firstWord === "is" || firstWord === "can" || firstWord === "has") {
+            console.debug(
+              `Skipping boolean property '${propName}' as it already starts with a common boolean verb: ${firstWord}`,
+            );
+            return;
           }
         }
 
@@ -208,12 +216,12 @@ const booleanPropertyStartsWithVerbRule = createRule({
                       id: "rename-boolean-property",
                       // TODO: add delay between retry
                       // TODO: give cache a ttl in case the last response is not valid...
-                      label: `Rename to "${newName}"`,
+                      label: `Rename to "${newName}" by adding @@clientName to 'client.tsp' file`,
                       fix: (p) => {
                         if (!csharpClientNameDec) {
-                          const location = getSourceLocation(property.node!);
-                          const pos2 = location.file.getLineAndCharacterOfPosition(location.pos);
-                          const indent = " ".repeat(pos2.character);
+                          //const location = getSourceLocation(property.node!);
+                          //const pos2 = location.file.getLineAndCharacterOfPosition(location.pos);
+                          //const indent = " ".repeat(pos2.character);
                           const scriptNode = getFirstAncestor(
                             property.node!,
                             (n) => n.kind === SyntaxKind.TypeSpecScript,
@@ -240,7 +248,23 @@ const booleanPropertyStartsWithVerbRule = createRule({
                             }
                           }
 
-                          return p.prependText(location, `${clientNameDecName}("${newName}", "csharp")\n${indent}`);
+                          let fix;
+                          context.program.sourceFiles.forEach((v, k) => {
+                            // we should do more check than just naming
+                            if (k.endsWith("client.tsp")) {
+                              const mn = getTypeName(property.model!);
+                              const p = v.file.text.length;
+                              fix = {
+                                kind: "insert-text",
+                                text: `\n@${clientNameDecName}(${mn}.${property.name}, "${newName}", "csharp");`,
+                                pos: p,
+                                file: v.file,
+                              };
+                            }
+                          });
+                          return fix;
+
+                          //return p.prependText(location, `${clientNameDecName}("${newName}", "csharp")\n${indent}`);
                         } else {
                           const location = getSourceLocation(csharpClientNameDec.args[0].node!);
                           return p.replaceText(location, `"${newName}"`);
