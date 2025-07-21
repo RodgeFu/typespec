@@ -14,8 +14,10 @@ import {
   SyntaxKind,
   TypeSpecScriptNode,
 } from "@typespec/compiler/ast";
+import { join } from "path";
 import { inspect } from "util";
 import z from "zod";
+import { initLmCache } from "../lm/lm-cache.js";
 import { ENV_VAR_LM_PROVIDER_CONNECTION_STRING, getLmProvider } from "../lm/lm-provider.js";
 import { askLanguageModeWithRetry } from "../lm/lm-utils.js";
 import { zLmResponseBasic } from "../lm/types.js";
@@ -40,16 +42,18 @@ const zRenameRespones = zLmResponseBasic.merge(
 const booleanPropertyStartsWithVerbRule = createRule({
   name: "csharp.naming.boolean-property-starts-with-verb",
   severity: "warning",
-  description: "Make sure boolean property's name starts with verb.",
+  description: "CSharp:Make sure boolean property's name starts with verb.",
   messages: {
-    default: "To be added",
     lmProviderNotAvailable: `Unable to do linter check using language model which is not available. Please ensure env variable ${ENV_VAR_LM_PROVIDER_CONNECTION_STRING} is set property or you are in VSCode with Typespec extension installed`,
-    errorOccurs: paramMessage`Unexpected error occurs when checking boolean property '${"modelName"}.${"propName"}'. You may check console or VSCode TypeSpec Output logs for more details. Error: ${"error"}`,
-    noLmResponse: paramMessage`No response from Language Model when checking boolean property '${"modelName"}.${"propName"}', please check whether the language model is available and retry again.`,
-    renameWithoutSuggestions: paramMessage`Boolean property '${"modelName"}.${"propName"}' should start with a verb, but no suggestions were provided by languange model.`,
-    renameNeeded: paramMessage`Boolean property '${"modelName"}.${"propName"}' should start with a verb. Suggested names: ${"suggestedNames"}`,
+    errorOccurs: paramMessage`CSharpNaming: Unexpected error occurs when checking boolean property '${"modelName"}.${"propName"}'. You may check console or VSCode TypeSpec Output logs for more details. Error: ${"error"}`,
+    noLmResponse: paramMessage`CSharpNaming: No response from Language Model when checking boolean property '${"modelName"}.${"propName"}', please check whether the language model is available and retry again.`,
+    renameWithoutSuggestions: paramMessage`CSharpNaming: Boolean property '${"modelName"}.${"propName"}' should start with a verb, but no suggestions were provided by languange model.`,
+    renameNeeded: paramMessage`CSharpNaming: Boolean property '${"modelName"}.${"propName"}' should start with a verb. Suggested names: ${"suggestedNames"}`,
   },
   create: (context) => {
+    const path = join(context.program.projectRoot, "azure-linter-lm.cache");
+    initLmCache(path);
+
     const lmProvider = getLmProvider();
     let lmProviderNotAvailableReported = false;
     const reportLmProviderNotAvailableError = (target: DiagnosticTarget | typeof NoTarget) => {
@@ -129,7 +133,7 @@ const booleanPropertyStartsWithVerbRule = createRule({
         const propNameWords = propName.split(/(?=[A-Z])/).filter((word) => word.length > 0);
         if (propNameWords.length > 0) {
           const firstWord = propNameWords[0].toLowerCase();
-          if (firstWord === "is" || firstWord === "can" || firstWord === "has") {
+          if (firstWord === "is" || firstWord === "can" || firstWord === "has" || firstWord === "use") {
             console.debug(
               `Skipping boolean property '${propName}' as it already starts with a common boolean verb: ${firstWord}`,
             );
@@ -146,15 +150,18 @@ const booleanPropertyStartsWithVerbRule = createRule({
         if (docArray.length > 0) {
           docMsg = `Detail description for the property '${propName}':\n${docArray.join("\n")}`;
         }
-        const message = `Check boolean property naming '${propName}', if the property name doesn't start with a verb like 'Is', 'Has', 'Can' or can't describe itself well, MUST suggest a few new name that starts with a verb like 'Is', 'Has', 'Can'..., and can describe the property well and in pascal case.\n${docMsg}`;
+        const message = `Check boolean property name '${propName}' which is in camel or pascal case, the name MUST start with a proper verb (i.e. 'Is', 'Has', 'Can', 'Use'...), otherwise suggest a few new name that starts with a verb (i.e. 'Is', 'Has', 'Can', 'Use'...) in pascal case.\n${docMsg}`;
 
         logger.debug(
           `Start calling askLanguageModeWithRetry for boolean property ${property.model?.name}.${propName} with message: ${message}`,
         );
 
         try {
+          //const startTime = Date.now();
+          //logger.warning(`start of ask lm for property: ${modelName}.${propName}\ncallstack: ${new Error().stack}`);
           const result = await askLanguageModeWithRetry(
             lmProvider,
+            `csharp.naming.boolean-property-starts-with-verb.${getTypeName(property.model!)}.${propName}`,
             [
               {
                 role: "user",
@@ -167,6 +174,7 @@ const booleanPropertyStartsWithVerbRule = createRule({
             zRenameRespones,
             2, // retry count
           );
+          //logger.warning("end of ask lm, duration: " + (Date.now() - startTime) + " ms");
           if (!result) {
             context.reportDiagnostic({
               target: property,
@@ -213,10 +221,10 @@ const booleanPropertyStartsWithVerbRule = createRule({
                   },
                   codefixes: suggestedNames.map((newName) => {
                     return {
-                      id: "rename-boolean-property",
+                      id: "csharp:rename-boolean-property",
                       // TODO: add delay between retry
                       // TODO: give cache a ttl in case the last response is not valid...
-                      label: `Rename to "${newName}" by adding @@clientName to 'client.tsp' file`,
+                      label: `CSharp: Rename to "${newName}" by adding @@clientName to 'client.tsp' file`,
                       fix: (p) => {
                         if (!csharpClientNameDec) {
                           //const location = getSourceLocation(property.node!);

@@ -92,7 +92,7 @@ export function createCompileService({
 }: CompileServiceOptions): CompileService {
   const oldPrograms = new Map<string, Program>();
   const eventListeners = new Map<string, (...args: unknown[]) => void>();
-  const updated = new UpdateManger((document) => compile(document));
+  const updated = new UpdateManger(async (document) => await compile(document));
   let configFilePath: string | undefined;
 
   return { compile, getScript, on, notifyChange, getMainFileForDocument };

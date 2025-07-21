@@ -27,10 +27,17 @@ export class UpdateManger<T> {
     this.#scheduleBatchUpdate();
   }
 
-  #scheduleBatchUpdate = debounceThrottle(() => {
-    this.#pendingUpdates.forEach((update) => {
-      void this.#update(update);
-    });
+  #scheduleBatchUpdate = debounceThrottle(async (id: number) => {
+    for (const [_key, update] of this.#pendingUpdates.entries()) {
+      // const start = Date.now();
+      // console.warn(
+      //   `id(${id}) Start of update Update for ${key} scheduled, doc version: ${update.latest.version}`,
+      // );
+      await this.#update(update);
+      // console.warn(
+      //   `id(${id}) End of update Update for ${key} scheduled, doc version: ${update.latest.version}. Duration was: ${Date.now() - start} ms`,
+      // );
+    }
     this.#pendingUpdates.clear();
   }, UPDATE_DEBOUNCE_TIME);
 
@@ -47,21 +54,28 @@ export class UpdateManger<T> {
  * @param fn The function
  * @param milliseconds Number of milliseconds to debounce/throttle
  */
-export function debounceThrottle(fn: () => void, milliseconds: number): () => void {
+export function debounceThrottle(
+  fn: (id: number) => Promise<void>,
+  milliseconds: number,
+): () => void {
   let timeout: any;
   let lastInvocation = Date.now() - milliseconds;
+  let executing = false;
+  let id = 0;
 
   function maybeCall() {
     clearTimeout(timeout);
 
-    timeout = setTimeout(() => {
-      if (Date.now() - lastInvocation < milliseconds) {
+    timeout = setTimeout(async () => {
+      const curId = id++;
+      if (Date.now() - lastInvocation < milliseconds || executing) {
         maybeCall();
         return;
       }
-
-      fn();
+      executing = true;
+      await fn(curId);
       lastInvocation = Date.now();
+      executing = false;
     }, milliseconds);
   }
 

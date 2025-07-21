@@ -283,9 +283,14 @@ export class TspLanguageClient {
     lc.onRequest(
       "custom/chatCompletion",
       async (params: { messages: ChatMessage[]; options: ChatCompleteOptions }) => {
-        const family = params.options.modelPreferences?.[0] ?? "gpt-4o";
+        //const family = params.options.modelPreferences?.[0] ?? "gpt-4o";
+        const family = "claude-sonnet-4";
+        logger.warning("family: " + family);
         const models = await lm.selectChatModels({
           family,
+          //family: "claude-sonnet-4", //2-3 sec?
+          //family: "gpt-4o", // 2-6 sec?
+          //family: "o4-mini", // 7sec?
         });
         if (models.length === 0) {
           logger.error(

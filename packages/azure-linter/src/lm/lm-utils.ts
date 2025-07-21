@@ -2,13 +2,16 @@ import { ChatCompleteOptions, ChatMessage, LmProvider } from "@typespec/compiler
 import { ZodType } from "zod";
 import { logger } from "../log/logger.js";
 import { toJsonSchemaString, tryRepairAndParseJson } from "../utils.js";
-import { LmCache } from "./lm-cache.js";
+import { lmCache } from "./lm-cache.js";
 import { LmErrorResponse, LmResponseBasic, zLmErrorResponse } from "./types.js";
 
-const lmCache = new LmCache();
-
+// TODO: consider moveing this to lower level under lmProvider
+// this will allow us to share more bewteen different lm providers and linter to avoid dup
+// but will also need to make the lmProvider interface more specific especially for the response type
+// but feels worth it
 export async function askLanguageModeWithRetry<T extends LmResponseBasic>(
   provider: LmProvider,
+  callerKey: string,
   messages: ChatMessage[],
   options: ChatCompleteOptions,
   responseZod: ZodType<T>,
@@ -17,7 +20,7 @@ export async function askLanguageModeWithRetry<T extends LmResponseBasic>(
   let attempt = 0;
   while (attempt < retryCount) {
     try {
-      const result = await askLanguageModel(provider, messages, options, responseZod);
+      const result = await askLanguageModel(provider, callerKey, messages, options, responseZod);
       if (result !== undefined) {
         return result;
       }
@@ -32,15 +35,16 @@ export async function askLanguageModeWithRetry<T extends LmResponseBasic>(
 
 export async function askLanguageModel<T extends LmResponseBasic>(
   provider: LmProvider,
+  callerKey: string,
   messages: ChatMessage[],
   options: ChatCompleteOptions,
   responseZod: ZodType<T>,
 ): Promise<T | LmErrorResponse | undefined> {
   // TODO: shall we consider the options and rseponse type for the cache?
-  if (lmCache.hasForMsg(messages)) {
+  const fromCache = await lmCache.getForMsg<T>(callerKey, messages);
+  if (fromCache) {
     logger.debug("Using cached result for messages: " + JSON.stringify(messages));
-    const cachedResult = lmCache.getForMsg<T>(messages);
-    return cachedResult;
+    return fromCache;
   }
 
   const responseSchemaMessage = `
@@ -78,7 +82,7 @@ export async function askLanguageModel<T extends LmResponseBasic>(
 
   if (parsedResult.type !== "error") {
     // Cache the result if it is a valid response
-    lmCache.setForMsg(messages, parsedResult);
+    lmCache.setForMsg(callerKey, messages, parsedResult);
   }
 
   return parsedResult;

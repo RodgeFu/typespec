@@ -1,3 +1,4 @@
+import { readFile, stat, writeFile } from "fs/promises";
 import { jsonrepair } from "jsonrepair";
 import { ZodType } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -50,4 +51,74 @@ export function tryRepairAndParseJson<T>(jsonStr: string | undefined): T | undef
 
 export function toJsonSchemaString(obj: ZodType) {
   return JSON.stringify(zodToJsonSchema(obj), undefined, 2);
+}
+
+export async function isFileExists(filePath: string): Promise<boolean> {
+  try {
+    const s = await stat(filePath);
+    return s.isFile();
+  } catch {
+    return false;
+  }
+}
+
+export async function tryReadJsonFile<T>(filePath: string, zType?: ZodType<T>): Promise<T | undefined> {
+  const data = await tryReadFile(filePath);
+  if (!data) {
+    return undefined;
+  }
+  const parsed = tryRepairAndParseJson<T>(data);
+  if (!parsed) {
+    logger.debug(`Failed to parse JSON from file: ${filePath}`);
+    return undefined;
+  }
+  if (!zType) {
+    return parsed;
+  }
+  const safeParsed = zType.safeParse(data);
+  if (!safeParsed.success) {
+    logger.debug(`Failed to parse JSON from file: ${filePath}. Error: ${safeParsed.error}`);
+    return undefined;
+  }
+  return safeParsed.data as T;
+}
+
+export async function tryReadFile(filePath: string): Promise<string | undefined> {
+  try {
+    const data = await readFile(filePath, "utf-8");
+    return data;
+  } catch (e) {
+    logger.debug(`Failed to read file ${filePath}: ${e}`);
+    return undefined;
+  }
+}
+
+export async function tryWriteFile(filePath: string, content: string): Promise<boolean> {
+  try {
+    await writeFile(filePath, content, "utf-8");
+    return true;
+  } catch (e) {
+    logger.error(`Failed to write file ${filePath}: ${e}`);
+    return false;
+  }
+}
+
+export function getRecordValue<T>(record: Record<string, T>, key: string): T | undefined {
+  return record[key];
+}
+
+export function setRecordValue<T>(record: Record<string, T>, key: string, value: T): void {
+  record[key] = value;
+}
+
+export function hasRecordKey<T>(record: Record<string, T>, key: string): boolean {
+  return key in record;
+}
+
+export function foreachRecord<T>(record: Record<string, T>, callback: (key: string, value: T) => void): void {
+  for (const key in record) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) {
+      callback(key, record[key]);
+    }
+  }
 }
