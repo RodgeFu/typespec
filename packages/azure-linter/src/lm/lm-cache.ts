@@ -94,7 +94,7 @@ class LmCache {
       return;
     }
     const parsed = await tryReadJsonFile(this._cacheFilePath, zLmCache);
-    return parsed ?? {};
+    this._cache = parsed ?? {};
   }
 }
 

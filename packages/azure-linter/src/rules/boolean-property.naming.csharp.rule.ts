@@ -44,7 +44,7 @@ const booleanPropertyStartsWithVerbRule = createRule({
   severity: "warning",
   description: "CSharp:Make sure boolean property's name starts with verb.",
   messages: {
-    lmProviderNotAvailable: `Unable to do linter check using language model which is not available. Please ensure env variable ${ENV_VAR_LM_PROVIDER_CONNECTION_STRING} is set property or you are in VSCode with Typespec extension installed`,
+    lmProviderNotAvailable: `Language Model is not available. If you are in VSCode, please make sure TypeSpec extension has been installed and VSCode LM has been initialized which may take some time if you just start the VSCode. If you are outside of VSCode, please make sure the environment variable ${ENV_VAR_LM_PROVIDER_CONNECTION_STRING} is set properly.`,
     errorOccurs: paramMessage`CSharpNaming: Unexpected error occurs when checking boolean property '${"modelName"}.${"propName"}'. You may check console or VSCode TypeSpec Output logs for more details. Error: ${"error"}`,
     noLmResponse: paramMessage`CSharpNaming: No response from Language Model when checking boolean property '${"modelName"}.${"propName"}', please check whether the language model is available and retry again.`,
     renameWithoutSuggestions: paramMessage`CSharpNaming: Boolean property '${"modelName"}.${"propName"}' should start with a verb, but no suggestions were provided by languange model.`,
@@ -141,10 +141,10 @@ const booleanPropertyStartsWithVerbRule = createRule({
           }
         }
 
-        if (!lmProvider) {
-          reportLmProviderNotAvailableError(property);
-          return;
-        }
+        // if (!lmProvider) {
+        //   reportLmProviderNotAvailableError(property);
+        //   return;
+        // }
 
         let docMsg = "";
         if (docArray.length > 0) {
@@ -186,6 +186,10 @@ const booleanPropertyStartsWithVerbRule = createRule({
             });
             return;
           } else if (result.type === "error") {
+            if (result.error === "Language model provider is not available") {
+              reportLmProviderNotAvailableError(property);
+              return;
+            }
             context.reportDiagnostic({
               target: property,
               messageId: "errorOccurs",

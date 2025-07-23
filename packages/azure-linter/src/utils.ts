@@ -75,7 +75,8 @@ export async function tryReadJsonFile<T>(filePath: string, zType?: ZodType<T>): 
   if (!zType) {
     return parsed;
   }
-  const safeParsed = zType.safeParse(data);
+
+  const safeParsed = zType.safeParse(parsed);
   if (!safeParsed.success) {
     logger.debug(`Failed to parse JSON from file: ${filePath}. Error: ${safeParsed.error}`);
     return undefined;

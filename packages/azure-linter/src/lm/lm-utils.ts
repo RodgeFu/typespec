@@ -10,7 +10,7 @@ import { LmErrorResponse, LmResponseBasic, zLmErrorResponse } from "./types.js";
 // but will also need to make the lmProvider interface more specific especially for the response type
 // but feels worth it
 export async function askLanguageModeWithRetry<T extends LmResponseBasic>(
-  provider: LmProvider,
+  provider: LmProvider | undefined,
   callerKey: string,
   messages: ChatMessage[],
   options: ChatCompleteOptions,
@@ -34,17 +34,24 @@ export async function askLanguageModeWithRetry<T extends LmResponseBasic>(
 }
 
 export async function askLanguageModel<T extends LmResponseBasic>(
-  provider: LmProvider,
+  provider: LmProvider | undefined,
   callerKey: string,
   messages: ChatMessage[],
   options: ChatCompleteOptions,
   responseZod: ZodType<T>,
 ): Promise<T | LmErrorResponse | undefined> {
   // TODO: shall we consider the options and rseponse type for the cache?
+  // TODO: how about making the cache a cacheLmProvider?
   const fromCache = await lmCache.getForMsg<T>(callerKey, messages);
   if (fromCache) {
     logger.debug("Using cached result for messages: " + JSON.stringify(messages));
     return fromCache;
+  }
+
+  // check the provider here to make sure cache is checked first which should work even when the provider is not available
+  if (!provider) {
+    logger.error("Language model provider is not available. Please check the configuration.");
+    return createLmErrorResponse("Language model provider is not available");
   }
 
   const responseSchemaMessage = `

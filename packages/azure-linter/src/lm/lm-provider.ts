@@ -68,7 +68,7 @@ function createTspExLmProvider(csObject: TspExLmProviderConnectionString): LmPro
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const r = (globalThis as any).TspExLmProvider;
   if (!r || typeof r.chatComplete !== "function") {
-    logger.error(`TspExLmProvider not found or does not implement chatComplete`);
+    logger.warning(`Default TspExLmProvider not found`);
     return undefined;
   }
   return r;
