@@ -1,8 +1,10 @@
 import {
   createRule,
+  createSourceFile,
   DiagnosticTarget,
   getSourceLocation,
   getTypeName,
+  InsertTextCodeFixEdit,
   Namespace,
   NoTarget,
   paramMessage,
@@ -260,22 +262,61 @@ const booleanPropertyStartsWithVerbRule = createRule({
                             }
                           }
 
-                          let fix;
-                          context.program.sourceFiles.forEach((v, k) => {
-                            // we should do more check than just naming
-                            if (k.endsWith("client.tsp")) {
+                          // TODO: some quick try, code refactor needed here
+                          let fix: InsertTextCodeFixEdit;
+                          let clientTsp;
+                          for (const [k, v] of context.program.sourceFiles) {
+                            // TODO: we should do more check than just naming
+                            if (
+                              k.endsWith("client.tsp") &&
+                              context.program.getSourceFileLocationContext(v.file).type === "project"
+                            ) {
+                              clientTsp = v;
+                              break;
+                            }
+                          }
+                          if (clientTsp) {
+                            const mn = getTypeName(property.model!);
+                            const p = clientTsp.file.text.length;
+                            fix = {
+                              kind: "insert-text",
+                              text: `\n@${clientNameDecName}(${mn}.${property.name}, "${newName}", "csharp");`,
+                              pos: p,
+                              file: clientTsp.file,
+                            };
+                            return fix;
+                          } else {
+                            // or shall we check tspconfig.yml for the location to create client.tsp?
+                            let mainTsp;
+                            // let's find main.tsp and create quick fix to create client.tsp if we can't find it
+                            for (const [k, v] of context.program.sourceFiles) {
+                              // TODO: we should do more check than just naming
+                              if (
+                                k.endsWith("main.tsp") &&
+                                context.program.getSourceFileLocationContext(v.file).type === "project"
+                              ) {
+                                mainTsp = v;
+                                break;
+                              }
+                            }
+                            if (mainTsp) {
                               const mn = getTypeName(property.model!);
-                              const p = v.file.text.length;
+                              const s = createSourceFile("", mainTsp.file.path.replace(/main\.tsp$/, "client.tsp"));
                               fix = {
                                 kind: "insert-text",
-                                text: `\n@${clientNameDecName}(${mn}.${property.name}, "${newName}", "csharp");`,
-                                pos: p,
-                                file: v.file,
-                              };
-                            }
-                          });
-                          return fix;
+                                text: `import "@azure-tools/typespec-client-generator-core";
+import "./main.tsp";
 
+@${clientNameDecName}(${mn}.${property.name}, "${newName}", "csharp");`,
+                                pos: 0,
+                                file: s,
+                              };
+                              return fix;
+                            }
+                            logger.error(
+                              'Cannot find "client.tsp" or "main.tsp" when creating code fix for boolean property rename',
+                            );
+                          }
                           //return p.prependText(location, `${clientNameDecName}("${newName}", "csharp")\n${indent}`);
                         } else {
                           const location = getSourceLocation(csharpClientNameDec.args[0].node!);

@@ -5,6 +5,7 @@ import {
   CodeActionParams,
   CompletionList,
   CompletionParams,
+  CreateFile,
   DefinitionParams,
   DiagnosticSeverity,
   DiagnosticTag,
@@ -41,6 +42,7 @@ import {
   SignatureHelp,
   SignatureHelpParams,
   TextDocumentChangeEvent,
+  TextDocumentEdit,
   TextDocumentIdentifier,
   TextDocumentSyncKind,
   TextEdit,
@@ -1223,14 +1225,31 @@ export function createServer(
           const edits = await resolveCodeFix(codeFix);
           //const vsEdits = convertCodeFixEdits(edits);
           const changes: Record<string, TextEdit[]> = {};
+          const docChanges: Record<string, CreateFile> = {};
           edits.forEach((edit) => {
             const uri = fileService.getURL(edit.file.path) ?? documentUri;
+            docChanges[uri] = {
+              kind: "create",
+              uri: uri,
+              options: {
+                ignoreIfExists: true,
+              },
+            };
+
             if (!changes[uri]) {
               changes[uri] = [];
             }
             changes[uri].push(convertCodeFixEdit(edit));
           });
-          await host.applyEdit({ changes });
+          const allChanges: (TextDocumentEdit | CreateFile)[] = [];
+          allChanges.push(...Object.values(docChanges));
+          allChanges.push(
+            ...Object.entries(changes).map(([uri, edits]) => ({
+              textDocument: { uri, version: null },
+              edits,
+            })),
+          );
+          await host.applyEdit({ documentChanges: allChanges });
         }
       }
     }
