@@ -1,64 +1,115 @@
-import { ChatCompleteOptions, ChatMessage, LmProvider } from "@typespec/compiler/internals";
+import { DiagnosticMessages, DiagnosticTarget, LinterRuleContext } from "@typespec/compiler";
+import { ChatCompleteOptions, ChatMessage } from "@typespec/compiler/internals";
+import { join } from "path";
 import { ZodType } from "zod";
 import { logger } from "../log/logger.js";
 import { toJsonSchemaString, tryRepairAndParseJson } from "../utils.js";
 import { lmCache } from "./lm-cache.js";
-import { LmErrorResponse, LmResponseBasic, zLmErrorResponse } from "./types.js";
+import { getLmProvider } from "./providers/lm-provider.js";
+import {
+  LmDiagnosticMessages,
+  LmErrorMessages,
+  LmResponseContent,
+  LmResponseError,
+  zLmResponseError,
+} from "./types.js";
 
-// TODO: consider moveing this to lower level under lmProvider
-// this will allow us to share more bewteen different lm providers and linter to avoid dup
-// but will also need to make the lmProvider interface more specific especially for the response type
-// but feels worth it
-export async function askLanguageModeWithRetry<T extends LmResponseBasic>(
-  provider: LmProvider | undefined,
+const skipReportingDiagnosticsWhenLmProviderNotAvailable = true;
+
+export function reportLmErrors<T extends LmDiagnosticMessages>(
+  result: LmResponseError,
+  target: DiagnosticTarget,
+  context: LinterRuleContext<T>,
+  onOtherErrors: (r: LmResponseError, context: LinterRuleContext<T>) => void,
+) {
+  if (result.type !== "error") {
+    return;
+  }
+  switch (result.error) {
+    case LmErrorMessages.LanguageModelProviderNotAvailable:
+      // the template constraint should have already ensured the 'lmProviderNotAvailable' messageId is available
+      // but the tsc compiler still complains about it. so convert as any here to avoid the error. Same for following cases
+      // TODO: further investigation needed to figure out a way to let compiler know the messageId is available
+      if (!skipReportingDiagnosticsWhenLmProviderNotAvailable) {
+        context.reportDiagnostic({
+          target,
+          messageId: "lmProviderNotAvailable",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
+      }
+      break;
+    case LmErrorMessages.EmptyLmResponse:
+      context.reportDiagnostic({
+        target,
+        messageId: "emptyLmResponse",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      break;
+    case LmErrorMessages.FailedToParseMappingResult:
+      context.reportDiagnostic({
+        target,
+        messageId: "failedToParseMappingResult",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      break;
+    default:
+      onOtherErrors(result, context);
+  }
+}
+
+export async function askLanguageModeWithRetry<T extends LmResponseContent, P extends DiagnosticMessages>(
+  context: LinterRuleContext<P>,
   callerKey: string,
   messages: ChatMessage[],
   options: ChatCompleteOptions,
   responseZod: ZodType<T>,
   retryCount = 3,
-): Promise<T | LmErrorResponse | undefined> {
-  let attempt = 0;
-  while (attempt < retryCount) {
-    try {
-      const result = await askLanguageModel(provider, callerKey, messages, options, responseZod);
-      if (result !== undefined) {
-        return result;
-      }
-    } catch (error) {
-      logger.error(`Attempt ${attempt + 1} failed: ${error}`);
+): Promise<T | LmResponseError> {
+  let result;
+  for (let attempt = 0; attempt < retryCount; attempt++) {
+    result = await askLanguageModel(context, callerKey, messages, options, responseZod);
+    if (
+      result.type === "error" &&
+      (result.error === LmErrorMessages.LanguageModelProviderNotAvailable ||
+        result.error === LmErrorMessages.EmptyLmResponse ||
+        result.error === LmErrorMessages.FailedToParseMappingResult)
+    ) {
+      logger.error(`Error while asking language model (attempt ${attempt + 1}/${retryCount}): ${result.error}`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
-    attempt++;
+    return result;
+    // sleep for a short time before retrying
   }
   logger.error("All attempts to ask the language model failed");
-  return undefined;
+  return result!;
 }
 
-export async function askLanguageModel<T extends LmResponseBasic>(
-  provider: LmProvider | undefined,
+export async function askLanguageModel<T extends LmResponseContent, P extends DiagnosticMessages>(
+  context: LinterRuleContext<P>,
   callerKey: string,
   messages: ChatMessage[],
   options: ChatCompleteOptions,
   responseZod: ZodType<T>,
-): Promise<T | LmErrorResponse | undefined> {
-  // TODO: shall we consider the options and rseponse type for the cache?
-  // TODO: how about making the cache a cacheLmProvider?
+): Promise<T | LmResponseError> {
+  const cachePath = join(context.program.projectRoot, "azure-linter-lm.cache");
+  lmCache.init(cachePath);
   const fromCache = await lmCache.getForMsg<T>(callerKey, messages);
   if (fromCache) {
     logger.debug("Using cached result for messages: " + JSON.stringify(messages));
     return fromCache;
   }
-
   // check the provider here to make sure cache is checked first which should work even when the provider is not available
+  const provider = getLmProvider();
   if (!provider) {
-    logger.error("Language model provider is not available. Please check the configuration.");
-    return createLmErrorResponse("Language model provider is not available");
+    logger.error("Language model provider is not available");
+    return createLmErrorResponse(LmErrorMessages.LanguageModelProviderNotAvailable);
   }
 
   const responseSchemaMessage = `
   ** Important: You response MUST follow the RULEs below **
   - If there is error occures, you MUST reponse a valid JSON object that matches the schema: 
   \`\`\`json schema
-  ${toJsonSchemaString(zLmErrorResponse)}
+  ${toJsonSchemaString(zLmResponseError)}
   \`\`\`
   - If there is no error occurs, you MUST response a valid JSON object or array that matches the schema: 
   \`\`\`json schema
@@ -76,36 +127,41 @@ export async function askLanguageModel<T extends LmResponseBasic>(
     },
   ];
 
-  const result = await provider.chatComplete(msgToLm, options);
-  if (!result) {
-    logger.error("No result returned from language model. Please check the provider configuration.");
-    return undefined;
-  }
-  const parsedResult = tryParseLanguageModelResult(result, responseZod);
-  if (parsedResult === undefined) {
-    logger.error("Failed to parse mapping result from LLM: " + result);
-    return undefined;
-  }
+  try {
+    const result = await provider.chatComplete(msgToLm, options);
+    if (!result) {
+      logger.error("No result returned from language model.");
+      return createLmErrorResponse(LmErrorMessages.EmptyLmResponse);
+    }
+    const parsedResult = tryParseLanguageModelResult(result, responseZod);
+    if (parsedResult === undefined) {
+      logger.error("Failed to parse mapping result from LLM: " + result);
+      return createLmErrorResponse(LmErrorMessages.FailedToParseMappingResult);
+    }
 
-  if (parsedResult.type !== "error") {
-    // Cache the result if it is a valid response
-    lmCache.setForMsg(callerKey, messages, parsedResult);
-  }
+    if (parsedResult.type !== "error") {
+      // Cache the result if it is a valid response
+      lmCache.setForMsg(callerKey, messages, parsedResult);
+    }
 
-  return parsedResult;
+    return parsedResult;
+  } catch (error) {
+    logger.error(`Error while asking language model: ${error}`);
+    return createLmErrorResponse(`Error while asking language model: ${error}`);
+  }
 }
 
-export function createLmErrorResponse(errorMessage: string): LmErrorResponse {
+export function createLmErrorResponse(errorMessage: string): LmResponseError {
   return {
     type: "error",
     error: errorMessage,
   };
 }
 
-export function tryParseLanguageModelResult<T>(
+export function tryParseLanguageModelResult<T extends LmResponseContent>(
   text: string | undefined,
   responseZod: ZodType<T>,
-): T | LmErrorResponse | undefined {
+): T | LmResponseError | undefined {
   if (!text) {
     logger.error("No text provided for parsing result");
     return undefined;
@@ -113,13 +169,13 @@ export function tryParseLanguageModelResult<T>(
 
   const jsonString = getJsonPart(text);
 
-  const jsonObj = tryRepairAndParseJson(jsonString) as LmResponseBasic;
+  const jsonObj = tryRepairAndParseJson(jsonString) as T | LmResponseError | undefined;
   if (!jsonObj || !jsonObj.type) {
     logger.error(`Invalid response from LM which is not a valid LmResponseBasic: ${text}`);
     return undefined;
   }
   if (jsonObj.type === "error") {
-    const result = zLmErrorResponse.safeParse(jsonObj);
+    const result = zLmResponseError.safeParse(jsonObj);
     if (result.success) {
       return result.data;
     } else {
@@ -135,7 +191,8 @@ export function tryParseLanguageModelResult<T>(
       return undefined;
     }
   } else {
-    logger.error(`Invalid response type: ${jsonObj.type}. Expected 'error' or 'content'. Response: ${text}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    logger.error(`Invalid response type: ${(jsonObj as any).type}. Expected 'error' or 'content'. Response: ${text}`);
     return undefined;
   }
 }

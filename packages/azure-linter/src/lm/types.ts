@@ -1,16 +1,51 @@
+import { DiagnosticMessages } from "@typespec/compiler";
 import z from "zod";
 
-export const zLmResponseBasic = z.object({
-  type: z.string().describe("Type of the response, sub types should override this with a literal type"),
+export const zLmResponseContent = z.object({
+  type: z.literal("content").describe("Type of the response, sub types should override this with a literal type"),
 });
 
-export type LmResponseBasic = z.infer<typeof zLmResponseBasic>;
+export type LmResponseContent = z.infer<typeof zLmResponseContent>;
 
-export const zLmErrorResponse = zLmResponseBasic.merge(
+export const zLmResponseError = zLmResponseContent.merge(
   z.object({
     type: z.literal("error"),
     error: z.string().describe("Error message from the language model provider"),
   }),
 );
 
-export type LmErrorResponse = z.infer<typeof zLmErrorResponse>;
+export type LmResponseError = z.infer<typeof zLmResponseError>;
+
+export const zRenameRespones = zLmResponseContent.merge(
+  z.object({
+    renameNeeded: z.boolean().describe("Indicates if the name needs to be changed. "),
+    originalName: z.string().describe("The exact original name given by user to check whether it needs to be changed."),
+    suggestedNames: z
+      .array(z.string())
+      .describe(
+        "An array of suggested names if it needs to be changed. The suggested names should meet the requirements provided by user and can describe itself well. The suggested names should be listed in a way that the first one is the most preferred name. Provide 3 suggestions at most. Double check you are not suggesting the original name as one of the suggestions.",
+      ),
+  }),
+);
+
+export type RenameResponse = z.infer<typeof zRenameRespones>;
+
+export const ENV_VAR_LM_PROVIDER_CONNECTION_STRING = "LM_PROVIDER_CONNECTION_STRING";
+
+export enum LmErrorMessages {
+  LanguageModelProviderNotAvailable = `Language Model is not available. If you are in VSCode, please make sure TypeSpec extension has been installed and VSCode LM has been initialized which may take some time if you just start the VSCode. If you are outside of VSCode, please make sure the environment variable ${ENV_VAR_LM_PROVIDER_CONNECTION_STRING} is set properly.`,
+  EmptyLmResponse = "Empty response got from Language Model, please check whether the language model is available and retry again.",
+  FailedToParseMappingResult = "Failed to parse mapping result from Language model, please retry",
+}
+
+export interface LmDiagnosticMessages extends DiagnosticMessages {
+  lmProviderNotAvailable: string;
+  emptyLmResponse: string;
+  failedToParseMappingResult: string;
+}
+
+export const LmDiagnosticMessages: LmDiagnosticMessages = {
+  lmProviderNotAvailable: LmErrorMessages.LanguageModelProviderNotAvailable,
+  emptyLmResponse: LmErrorMessages.EmptyLmResponse,
+  failedToParseMappingResult: LmErrorMessages.FailedToParseMappingResult,
+};

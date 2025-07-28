@@ -1,7 +1,8 @@
 import { ChatMessage } from "@typespec/compiler/internals";
 import z from "zod";
+import { logger } from "../log/logger.js";
 import { getRecordValue, setRecordValue, tryReadJsonFile, tryWriteFile } from "../utils.js";
-import { LmResponseBasic } from "./types.js";
+import { LmResponseContent } from "./types.js";
 
 const zLmCacheEntry = z.object({
   msgKey: z.string().describe("The key for the message, joined by role and message content"),
@@ -17,27 +18,27 @@ type LmCacheMap = z.infer<typeof zLmCache>;
 
 const MAX_LM_CACHE_SIZE_PER_KEY = 3;
 
-// TODO: consider moveing this to lower level under lmProvider
 class LmCache {
   private _cache: LmCacheMap = {};
   private _cacheFilePath?: string;
-  private _cacheFileLoaded = false;
 
   constructor() {}
 
-  setCacheFilePath(cacheFilePath: string) {
-    this._cacheFilePath = cacheFilePath;
-    this._cacheFileLoaded = false;
+  init(cacheFilePath: string) {
+    if (this._cacheFilePath === undefined) {
+      this._cacheFilePath = cacheFilePath;
+      this.loadFromCacheFile();
+    } else {
+      if (this._cacheFilePath !== cacheFilePath) {
+        logger.warning(
+          `Cache file path is already set to ${this._cacheFilePath}, ignore the new path ${cacheFilePath}`,
+        );
+      }
+    }
 
     // consider hook on process exit to flush the cache to file
     // now we will flush to cache file on every set operation for simplicity
     // which should be ignoreable comparing the to actual lm request calls
-  }
-
-  private async ensureCacheFileLoaded() {
-    if (this._cacheFileLoaded) return;
-    await this.loadFromCacheFile();
-    this._cacheFileLoaded = true;
   }
 
   private generateMessageKey(key: string, messages: ChatMessage[]): string {
@@ -45,9 +46,7 @@ class LmCache {
     return `${key}->${msgPart}`;
   }
 
-  async getForMsg<T extends LmResponseBasic>(callerKey: string, msg: ChatMessage[]): Promise<T | undefined> {
-    await this.ensureCacheFileLoaded();
-
+  async getForMsg<T extends LmResponseContent>(callerKey: string, msg: ChatMessage[]): Promise<T | undefined> {
     const callerCache = getRecordValue(this._cache, callerKey);
     if (!callerCache) {
       return undefined;
@@ -61,9 +60,7 @@ class LmCache {
     }
   }
 
-  async setForMsg<T extends LmResponseBasic>(callerKey: string, msg: ChatMessage[], value: T) {
-    await this.ensureCacheFileLoaded();
-
+  async setForMsg<T extends LmResponseContent>(callerKey: string, msg: ChatMessage[], value: T) {
     const msgKey = this.generateMessageKey(callerKey, msg);
     const entry: LmCacheEntry = { msgKey, value };
 
@@ -96,10 +93,6 @@ class LmCache {
     const parsed = await tryReadJsonFile(this._cacheFilePath, zLmCache);
     this._cache = parsed ?? {};
   }
-}
-
-export async function initLmCache(cacheFilePath: string) {
-  await lmCache.setCacheFilePath(cacheFilePath);
 }
 
 export const lmCache = new LmCache();

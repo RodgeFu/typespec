@@ -75,6 +75,27 @@
         "order": 2
       }
     },
+        {
+      "type": "node",
+      "request": "launch",
+      "name": "Compile for azure-linter",
+      "program": "${workspaceFolder}/packages/compiler/entrypoints/cli.js",
+      "args": [
+        "compile",
+        "C:/t/tspProj/p1/client.tsp",
+      ],
+      "smartStep": true,
+      "sourceMaps": true,
+      "skipFiles": ["<node_internals>/**/*.js"],
+      "outFiles": [
+        "${workspaceFolder}/packages/*/dist/**/*.js",
+        "${workspaceFolder}/packages/*/dist-dev/**/*.js"
+      ],
+      "cwd": "${workspaceFolder}/packages/compiler",
+      "presentation": {
+        "order": 2
+      }
+    },
     {
       "type": "node",
       "request": "launch",
