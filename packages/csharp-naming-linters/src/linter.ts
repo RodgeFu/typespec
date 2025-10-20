@@ -9,18 +9,18 @@ export const $linter = defineLinter({
   ruleSets: {
     recommended: {
       enable: {
-        [`azure-linter/${noInterfaceRule.name}`]: true,
-        [`azure-linter/${booleanPropertyStartsWithVerbRule.name}`]: true,
-        [`azure-linter/${durationWithUnitRule.name}`]: true,
-        [`azure-linter/${tooGenericRule.name}`]: true,
+        [`csharp-naming-linters/${noInterfaceRule.name}`]: true,
+        [`csharp-naming-linters/${booleanPropertyStartsWithVerbRule.name}`]: true,
+        [`csharp-naming-linters/${durationWithUnitRule.name}`]: true,
+        [`csharp-naming-linters/${tooGenericRule.name}`]: true,
       },
     },
     all: {
       enable: {
-        [`azure-linter/${noInterfaceRule.name}`]: true,
-        [`azure-linter/${booleanPropertyStartsWithVerbRule.name}`]: true,
-        [`azure-linter/${durationWithUnitRule.name}`]: true,
-        [`azure-linter/${tooGenericRule.name}`]: true,
+        [`csharp-naming-linters/${noInterfaceRule.name}`]: true,
+        [`csharp-naming-linters/${booleanPropertyStartsWithVerbRule.name}`]: true,
+        [`csharp-naming-linters/${durationWithUnitRule.name}`]: true,
+        [`csharp-naming-linters/${tooGenericRule.name}`]: true,
       },
     },
   },

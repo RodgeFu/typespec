@@ -292,20 +292,33 @@ export class TspLanguageClient {
       "custom/chatCompletion",
       async (params: { messages: ChatMessage[]; lmOptions: ChatCompleteOptions; id?: string }) => {
         const family = params.lmOptions.modelPreferences ?? "gpt-4o";
-        const s = new Date();
-        logger.debug(
-          `[ChatComplete #${params.id ?? "N/A"}][${s.toTimeString()}] start select model for family ${family}`,
-        );
-        let mp = lmModelCache.get(family);
-        if (!mp) {
-          mp = lm.selectChatModels({ family });
-          lmModelCache.set(family, mp);
+        let models: LanguageModelChat[] | undefined = undefined;
+        for (let i = 0; i < 3; i++) {
+          const s = new Date();
+          logger.debug(
+            `[ChatComplete #${params.id ?? "N/A"}:(${i}/3)][${s.toTimeString()}] start select model for family ${family}`,
+          );
+          let mp = lmModelCache.get(family);
+          if (!mp) {
+            mp = lm.selectChatModels({ family });
+            lmModelCache.set(family, mp);
+          }
+          models = await mp;
+          const e = new Date();
+          logger.debug(
+            `[ChatComplete #${params.id ?? "N/A"}:(${i}/3)][${e.toTimeString()}] Model selection for family ${family} took ${e.getTime() - s.getTime()} ms`,
+          );
+          if (models && models.length > 0) {
+            break;
+          }
+          lmModelCache.delete(family);
+          // wait for some time and retry
+          const waitTime = 200 * (i + 1);
+          logger.warning(
+            `[ChatComplete #${params.id ?? "N/A"}:(${i}/3)] No models found for family ${family}, retrying after ${waitTime} ms...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
-        const models = await mp;
-        const e = new Date();
-        logger.debug(
-          `[ChatComplete #${params.id ?? "N/A"}][${e.toTimeString()}] Model selection for family ${family} took ${e.getTime() - s.getTime()} ms`,
-        );
         if (!models || models.length === 0) {
           logger.error(
             `[ChatComplete #${params.id ?? "N/A"}] No chat models returned. Please check whether language model is available. It may take some time for language models to be ready to use after vscode is started. Language model family used: ${family}.`,

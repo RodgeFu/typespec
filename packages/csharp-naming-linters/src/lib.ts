@@ -1,7 +1,7 @@
 import { createTypeSpecLibrary, paramMessage } from "@typespec/compiler";
 
 export const $lib = createTypeSpecLibrary({
-  name: "azure-linter",
+  name: "csharp-naming-linters",
   // Define diagnostics for the library. This will provide a typed API to report diagnostic as well as a auto doc generation.
   diagnostics: {
     "banned-alternate-name": {
@@ -17,8 +17,4 @@ export const $lib = createTypeSpecLibrary({
   },
 });
 
-export const {
-  reportDiagnostic,
-  createDiagnostic,
-  stateKeys: StateKeys,
-} = $lib;
+export const { reportDiagnostic, createDiagnostic, stateKeys: StateKeys } = $lib;

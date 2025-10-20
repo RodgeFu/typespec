@@ -96,7 +96,7 @@ export async function askLanguageModel<
   options: ChatCompleteOptions,
   responseZod: T,
 ): Promise<z.infer<T> | LmResponseError> {
-  const cachePath = join(context.program.projectRoot, "azure-linter-lm.cache");
+  const cachePath = join(context.program.projectRoot, "csharp-naming-linters-lm.cache");
   await lmCache.init(cachePath);
   if (callerKey) {
     const fromCache = await lmCache.getForMsg<z.infer<T>>(callerKey, messages);

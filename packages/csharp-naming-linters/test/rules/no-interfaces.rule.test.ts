@@ -11,19 +11,14 @@ describe("noInterfaceRule", () => {
 
   beforeEach(async () => {
     const runner = await createTestRunner();
-    ruleTester = createLinterRuleTester(
-      runner,
-      noInterfaceRule,
-      "azure-linter",
-    );
+    ruleTester = createLinterRuleTester(runner, noInterfaceRule, "csharp-naming-linters");
   });
 
   describe("models", () => {
     it("emit diagnostics if using interfaces", async () => {
       await ruleTester.expect(`interface Test {}`).toEmitDiagnostics({
-        code: "azure-linter/no-interface",
-        message:
-          "Interface shouldn't be used with this library. Keep operations at the root.",
+        code: "csharp-naming-linters/no-interface",
+        message: "Interface shouldn't be used with this library. Keep operations at the root.",
       });
     });
 

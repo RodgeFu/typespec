@@ -25,6 +25,7 @@ import {
   TypeSpecScriptNode,
   UsingStatementNode,
 } from "@typespec/compiler/ast";
+import { $ } from "@typespec/compiler/typekit";
 import { join } from "path";
 import { AnyZodObject } from "zod";
 import { LmRuleChecker } from "../lm/lm-rule-checker.js";
@@ -41,6 +42,16 @@ export function isMyCode<T extends DiagnosticMessages>(
 
 export function isDirectPropertyOfModel(property: ModelProperty): boolean {
   return property.model?.properties.has(property.name) ?? false;
+}
+
+export function isIntegerType(type: Type, program: Program): boolean {
+  const tk = $(program);
+  return (
+    type === tk.builtin.int8 ||
+    type === tk.builtin.int16 ||
+    type === tk.builtin.int32 ||
+    type === tk.builtin.int64
+  );
 }
 
 export function isUnnamedModelProperty(property: ModelProperty): boolean {

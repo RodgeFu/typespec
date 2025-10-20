@@ -1,5 +1,4 @@
 import { getDoc, getTypeName, paramMessage } from "@typespec/compiler";
-import { $ } from "@typespec/compiler/typekit";
 import { inspect } from "util";
 import { LmRuleChecker } from "../lm/lm-rule-checker.js";
 import { reportLmErrors } from "../lm/lm-utils.js";
@@ -9,6 +8,7 @@ import {
   createRuleWithLmRuleChecker,
   getClientNameFromDec,
   isDirectPropertyOfModel,
+  isIntegerType,
   isMyCode,
   isUnnamedModelProperty,
 } from "./rule-utils.js";
@@ -19,7 +19,7 @@ const aiChecker = new LmRuleChecker(
   [
     {
       role: "user",
-      message: `Check the given property names which are in camel or pascal case. If the property is for internvals or durations, it MUST ends with a unit suffix in format '...In<Unit>' (i.e: should be MonitoringIntervalInSeconds instead of MonitoringInterval, TimeToLiveDurationInMilliseconds instead of TimeToLiveDuration), otherwise suggest a new name with a proper suffix if you can determine the correct unit to use, otherwise DO NOT guess a unit suffix if you are not sure about the correct unit, just DON'T provide suggestions in that case.`,
+      message: `Check the given property names which are in camel or pascal case. If the property is for intervals or durations, it MUST ends with a unit suffix in format '...In<Unit>' (i.e: should be MonitoringIntervalInSeconds instead of MonitoringInterval, TimeToLiveDurationInMilliseconds instead of TimeToLiveDuration), otherwise suggest a new name with a proper suffix if you can determine the correct unit to use, otherwise DO NOT guess a unit suffix if you are not sure about the correct unit, just DON'T provide suggestions in that case.`,
     },
   ],
   {
@@ -42,8 +42,7 @@ export const durationWithUnitRule = createRuleWithLmRuleChecker(aiChecker, {
   create: (context) => {
     return {
       modelProperty: async (property) => {
-        const tk = $(context.program);
-        if (property.node === undefined || property.type !== tk.builtin.duration) {
+        if (property.node === undefined || !isIntegerType(property.type, context.program)) {
           return;
         }
         if (
