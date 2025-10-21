@@ -3,6 +3,6 @@ import { createTestLibrary, TypeSpecTestLibrary } from "@typespec/compiler/testi
 import { fileURLToPath } from "url";
 
 export const AzureLinterTestLibrary: TypeSpecTestLibrary = createTestLibrary({
-  name: "csharp-naming-linters",
+  name: "csharp-naming-ai-linters",
   packageRoot: resolvePath(fileURLToPath(import.meta.url), "../../../../"),
 });

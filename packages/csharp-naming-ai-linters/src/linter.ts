@@ -9,18 +9,18 @@ export const $linter = defineLinter({
   ruleSets: {
     recommended: {
       enable: {
-        [`csharp-naming-linters/${noInterfaceRule.name}`]: true,
-        [`csharp-naming-linters/${booleanPropertyStartsWithVerbRule.name}`]: true,
-        [`csharp-naming-linters/${durationWithUnitRule.name}`]: true,
-        [`csharp-naming-linters/${tooGenericRule.name}`]: true,
+        [`csharp-naming-ai-linters/${noInterfaceRule.name}`]: true,
+        [`csharp-naming-ai-linters/${booleanPropertyStartsWithVerbRule.name}`]: true,
+        [`csharp-naming-ai-linters/${durationWithUnitRule.name}`]: true,
+        [`csharp-naming-ai-linters/${tooGenericRule.name}`]: true,
       },
     },
     all: {
       enable: {
-        [`csharp-naming-linters/${noInterfaceRule.name}`]: true,
-        [`csharp-naming-linters/${booleanPropertyStartsWithVerbRule.name}`]: true,
-        [`csharp-naming-linters/${durationWithUnitRule.name}`]: true,
-        [`csharp-naming-linters/${tooGenericRule.name}`]: true,
+        [`csharp-naming-ai-linters/${noInterfaceRule.name}`]: true,
+        [`csharp-naming-ai-linters/${booleanPropertyStartsWithVerbRule.name}`]: true,
+        [`csharp-naming-ai-linters/${durationWithUnitRule.name}`]: true,
+        [`csharp-naming-ai-linters/${tooGenericRule.name}`]: true,
       },
     },
   },

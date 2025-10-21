@@ -1,5 +1,5 @@
 {
-  "name": "csharp-naming-linters",
+  "name": "csharp-naming-ai-linters",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/src/index.js",

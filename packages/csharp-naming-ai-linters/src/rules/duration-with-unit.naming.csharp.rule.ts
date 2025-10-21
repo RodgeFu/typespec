@@ -28,7 +28,7 @@ const aiChecker = new LmRuleChecker(
   zRenameCheckResult,
 );
 
-const ruleName = "csharp.naming.duration-with-unit";
+const ruleName = "duration-with-unit";
 export const durationWithUnitRule = createRuleWithLmRuleChecker(aiChecker, {
   name: ruleName,
   severity: "warning",

@@ -24,7 +24,7 @@ import { RenameData, zRenameCheckResult } from "./types.js";
  * This linter rule is not completed yet, put it here just to simulate a "bad" linter rule which will need to check
  * hundreds of properties in a large project so that we can understand how the linter with AI support will perform in this case.
  */
-const ruleName = "csharp.naming.avoid-too-generic-name";
+const ruleName = "avoid-too-generic-name";
 const aiChecker = new LmRuleChecker(
   "too-general",
   [

@@ -15,7 +15,7 @@ import {
 } from "./rule-utils.js";
 import { RenameData, zRenameCheckResult } from "./types.js";
 
-const ruleName = "csharp.naming.boolean-property-starts-with-verb";
+const ruleName = "boolean-property-starts-with-verb";
 const aiChecker = new LmRuleChecker(
   "bool-starts-with-verb",
   [
