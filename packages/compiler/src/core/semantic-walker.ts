@@ -1,3 +1,4 @@
+import { isPromise } from "util/types";
 import type { Program } from "./program.js";
 import { isTemplateDeclaration } from "./type-utils.js";
 import {
@@ -60,6 +61,8 @@ export function navigateProgram(
   context.emit("root", program);
 
   navigateNamespaceType(program.getGlobalNamespaceType(), context);
+
+  context.emit("exitRoot", program);
 }
 
 /**
@@ -148,7 +151,15 @@ function createNavigationContext(
 ): NavigationContext {
   return {
     visited: new Set(),
-    emit: (key, ...args) => (listeners as any)[key]?.(...(args as [any])),
+    emit: (key, ...args) => {
+      const r = (listeners as any)[key]?.(...(args as [any]));
+      if (isPromise(r)) {
+        // TODO: having an option to await the promise but it will require a breaking change to make all the API signatures to be async. Consider to support it when we have a real requirement for it in the future
+        return undefined;
+      } else {
+        return r;
+      }
+    },
     options: computeOptions(options),
   };
 }
@@ -476,6 +487,7 @@ export class EventEmitter<T extends { [key: string]: (...args: any) => any }> {
 
 const eventNames: Array<keyof SemanticNodeListener> = [
   "root",
+  "exitRoot",
   "templateParameter",
   "exitTemplateParameter",
   "scalar",
