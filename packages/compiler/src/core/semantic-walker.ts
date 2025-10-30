@@ -154,7 +154,7 @@ function createNavigationContext(
     emit: (key, ...args) => {
       const r = (listeners as any)[key]?.(...(args as [any]));
       if (isPromise(r)) {
-        // TODO: having an option to await the promise but it will require a breaking change to make all the API signatures to be async. Consider to support it when we have a real requirement for it in the future
+        // TODO: consider to also having an option to support awaiting the promise here but please be aware that it will require a breaking change to make all the API signatures to be async. So let's add the support when we have a real requirement for it worthing the effort in the future
         return undefined;
       } else {
         return r;
