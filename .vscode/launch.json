@@ -165,6 +165,9 @@
         // "ENABLE_SERVER_COMPILE_LOGGING": "true",
         // "ENABLE_UPDATE_MANAGER_LOGGING": "true",
 
+        //"ENABLE_SERVER_COMPILE_LOGGING": "true",
+        //"ENABLE_UPDATE_MANAGER_LOGGING": "true",
+
         "TYPESPEC_SERVER_NODE_OPTIONS": "--nolazy --inspect-brk=4242",
         "TYPESPEC_DEVELOPMENT_MODE": "true"
       },

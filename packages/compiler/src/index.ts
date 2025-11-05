@@ -12,10 +12,6 @@ export {
   isTypeSpecValueTypeOf,
   typespecTypeToJson,
   validateDecoratorNotOnType,
-  // TODO: decide what to do with those, dec should use extern dec instead
-  // if we remove, remove from decorator-utils too
-  // validateDecoratorParamCount,
-  // validateDecoratorTarget,
   validateDecoratorUniqueOnNode,
   type DecoratorDefinition,
   type DecoratorParamDefinition,
@@ -206,7 +202,7 @@ export {
   type ModuleResolutionResult,
   type ResolveModuleHost,
   type ResolveModuleOptions,
-} from "./module-resolver/module-resolver.js";
+} from "./module-resolver/index.js";
 export {
   CompileResult,
   createServer,
@@ -243,6 +239,7 @@ export const $decorators = {
 };
 
 export { applyCodeFix, applyCodeFixes } from "./core/code-fixes.js";
+export { createAddDecoratorCodeFix } from "./core/compiler-code-fixes/create-add-decorator/create-add-decorator.codefix.js";
 export { createSuppressCodeFix } from "./core/compiler-code-fixes/suppress.codefix.js";
 export {
   ensureTrailingDirectorySeparator,

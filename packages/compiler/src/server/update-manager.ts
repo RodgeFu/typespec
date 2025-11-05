@@ -17,6 +17,7 @@ type UpdateCallback<T> = (
 ) => Promise<T>;
 /**
  * Track file updates and recompile the affected files after some debounce time.
+ * T will be returned if the scheduled update is triggered eventually, but if a newer scheduleUpdate is triggered, the previous ones will be cancelled and return undefined.
  */
 export class UpdateManager<T = void> {
   #pendingUpdates = new Map<string, PendingUpdate>();
@@ -65,6 +66,7 @@ export class UpdateManager<T = void> {
 
   /**
    * Callback will only be invoked after start() is called.
+   * We need to start explicitly to avoid compiling with incorrect settings when the lsp hasn't fully initialized (the client settings are not loaded yet.)
    */
   public start() {
     this.#isStarted = true;
@@ -131,7 +133,7 @@ export class UpdateManager<T = void> {
 
   /**
    * T will be returned if the schedule is triggered eventually, if a newer scheduleUpdate
-   *  occurs before the debounce time, the previous one will be cancelled and return undefined.
+   *  occurs before the debounce time, the previous ones will be cancelled and return undefined.
    */
   public scheduleUpdate(
     document: TextDocument | TextDocumentIdentifier,
@@ -201,7 +203,7 @@ export function debounceThrottle<T, P>(
     return promise.getPromise();
   }
 
-  /** Clear all promises before the given id */
+  /** Clear all promises before the given id to make sure we are not leaking anything */
   function clearPromisesBefore(id: number) {
     // clear all promises before with id < the given id
     for (const k of executionPromises.keys()) {
@@ -250,4 +252,29 @@ export function debounceThrottle<T, P>(
   }
 
   return maybeCall;
+}
+
+class DeferredPromise<T> {
+  #promise: Promise<T>;
+  #resolve!: (value: T) => void;
+  #reject!: (reason?: any) => void;
+
+  constructor() {
+    this.#promise = new Promise<T>((res, rej) => {
+      this.#resolve = res;
+      this.#reject = rej;
+    });
+  }
+
+  getPromise(): Promise<T> {
+    return this.#promise;
+  }
+
+  resolvePromise(value: T) {
+    this.#resolve(value);
+  }
+
+  rejectPromise(reason?: any) {
+    this.#reject(reason);
+  }
 }
