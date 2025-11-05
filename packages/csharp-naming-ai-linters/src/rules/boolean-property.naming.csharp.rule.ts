@@ -41,7 +41,7 @@ export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiC
   },
   create: (context) => {
     return {
-      modelProperty: async (property) => {
+      modelProperty: (property) => {
         const tk = $(context.program);
         let propName = property.name;
         const propType = property.type;
@@ -89,39 +89,42 @@ export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiC
           description,
         };
 
-        try {
-          const result = await aiChecker.queueDataToCheck(data);
-          if (result.renameNeeded) {
-            const suggestedNames = result.suggestedNames;
-            context.reportDiagnostic({
-              target: csharpClientNameDec?.args[0].node ?? property,
-              messageId: "verbNeeded",
-              format: {
-                modelName,
-                propName,
-                newNameSuggestions:
-                  suggestedNames.length > 0
-                    ? `New name suggestions: ${suggestedNames.join(", ")}`
-                    : "Please add a verb prefix to the property name.",
-              },
-              codefixes: createRenameCodeFix(result, csharpClientNameDec, context, property),
+        aiChecker.queueDataToCheck(
+          data,
+          (result) => {
+            if (result.renameNeeded) {
+              const suggestedNames = result.suggestedNames;
+              context.reportDiagnostic({
+                target: csharpClientNameDec?.args[0].node ?? property,
+                messageId: "verbNeeded",
+                format: {
+                  modelName,
+                  propName,
+                  newNameSuggestions:
+                    suggestedNames.length > 0
+                      ? `New name suggestions: ${suggestedNames.join(", ")}`
+                      : "Please add a verb prefix to the property name.",
+                },
+                codefixes: createRenameCodeFix(result, csharpClientNameDec, context, property),
+              });
+            }
+          },
+          (e) => {
+            // TODO: handle other errors
+            reportLmErrors(e as LmResponseError, property, context, (r) => {
+              context.reportDiagnostic({
+                target: property,
+                messageId: "errorOccurs",
+                format: {
+                  modelName,
+                  propName,
+                  error: `${inspect(r)}`,
+                },
+              });
             });
-          }
-        } catch (e) {
-          // TODO: handle other errors
-          reportLmErrors(e as LmResponseError, property, context, (r) => {
-            context.reportDiagnostic({
-              target: property,
-              messageId: "errorOccurs",
-              format: {
-                modelName,
-                propName,
-                error: `${inspect(r)}`,
-              },
-            });
-          });
-          return;
-        }
+            return;
+          },
+        );
 
         //const message = `Check boolean property name '${propName}' which is in camel or pascal case, the name MUST start with a proper verb (i.e. 'Is', 'Has', 'Can', 'Use'...), otherwise suggest a few new name that starts with a verb (i.e. 'Is', 'Has', 'Can', 'Use'...) in pascal case.\n${docMsg}`;
 

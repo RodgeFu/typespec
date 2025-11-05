@@ -41,7 +41,7 @@ export const durationWithUnitRule = createRuleWithLmRuleChecker(aiChecker, {
   },
   create: (context) => {
     return {
-      modelProperty: async (property) => {
+      modelProperty: (property) => {
         if (property.node === undefined || !isIntegerType(property.type, context.program)) {
           return;
         }
@@ -64,39 +64,42 @@ export const durationWithUnitRule = createRuleWithLmRuleChecker(aiChecker, {
           description,
         };
 
-        try {
-          const result = await aiChecker.queueDataToCheck(renameData);
-          if (result.renameNeeded) {
-            const suggestedNames = result.suggestedNames;
-            context.reportDiagnostic({
-              target: property,
-              messageId: "unitNeeded",
-              format: {
-                modelName: property.model?.name ?? "unknown",
-                propName: property.name,
-                newNameSuggestions:
-                  suggestedNames.length > 0
-                    ? `New name suggestions: ${suggestedNames.join(", ")}`
-                    : "Please append a unit suffix to the property name.",
-              },
-              codefixes: createRenameCodeFix(result, clientNameDec, context, property),
+        aiChecker.queueDataToCheck(
+          renameData,
+          (result) => {
+            if (result.renameNeeded) {
+              const suggestedNames = result.suggestedNames;
+              context.reportDiagnostic({
+                target: property,
+                messageId: "unitNeeded",
+                format: {
+                  modelName: property.model?.name ?? "unknown",
+                  propName: property.name,
+                  newNameSuggestions:
+                    suggestedNames.length > 0
+                      ? `New name suggestions: ${suggestedNames.join(", ")}`
+                      : "Please append a unit suffix to the property name.",
+                },
+                codefixes: createRenameCodeFix(result, clientNameDec, context, property),
+              });
+            }
+          },
+          (error) => {
+            // TODO: handle other errors
+            reportLmErrors(error as LmResponseError, property, context, (r) => {
+              context.reportDiagnostic({
+                target: property,
+                messageId: "errorOccurs",
+                format: {
+                  modelName: property.model?.name ?? "unknown",
+                  propName: property.name,
+                  error: `${inspect(r)}`,
+                },
+              });
             });
-          }
-        } catch (error) {
-          // TODO: handle other errors
-          reportLmErrors(error as LmResponseError, property, context, (r) => {
-            context.reportDiagnostic({
-              target: property,
-              messageId: "errorOccurs",
-              format: {
-                modelName: property.model?.name ?? "unknown",
-                propName: property.name,
-                error: `${inspect(r)}`,
-              },
-            });
-          });
-          return;
-        }
+            return;
+          },
+        );
       },
     };
   },

@@ -50,7 +50,7 @@ export const tooGenericRule = createRuleWithLmRuleChecker(aiChecker, {
   },
   create: (context) => {
     return {
-      root: async (program) => {
+      root: (program) => {
         aiChecker.messages.push({
           role: "user",
           message: `As a context, the current project has the following services: [${listServices(
@@ -60,7 +60,7 @@ export const tooGenericRule = createRuleWithLmRuleChecker(aiChecker, {
             .join(", ")}]`,
         });
       },
-      modelProperty: async (property) => {
+      modelProperty: (property) => {
         if (
           !isMyCode(property, context) ||
           !isDirectPropertyOfModel(property) ||
@@ -91,39 +91,41 @@ export const tooGenericRule = createRuleWithLmRuleChecker(aiChecker, {
           description,
         };
 
-        try {
-          const result = await aiChecker.queueDataToCheck(data);
-          if (result.renameNeeded) {
-            const suggestedNames = result.suggestedNames;
-            context.reportDiagnostic({
-              target: property,
-              messageId: "tooGeneric",
-              format: {
-                modelName: property.model?.name ?? "unknown",
-                propName: property.name,
-                newNameSuggestions:
-                  suggestedNames.length > 0
-                    ? `New name suggestions: ${suggestedNames.join(", ")}`
-                    : "Please give it a more specific name.",
-              },
-              codefixes: createRenameCodeFix(result, clientNameDec, context, property),
+        aiChecker.queueDataToCheck(
+          data,
+          (result) => {
+            if (result.renameNeeded) {
+              const suggestedNames = result.suggestedNames;
+              context.reportDiagnostic({
+                target: property,
+                messageId: "tooGeneric",
+                format: {
+                  modelName: property.model?.name ?? "unknown",
+                  propName: property.name,
+                  newNameSuggestions:
+                    suggestedNames.length > 0
+                      ? `New name suggestions: ${suggestedNames.join(", ")}`
+                      : "Please give it a more specific name.",
+                },
+                codefixes: createRenameCodeFix(result, clientNameDec, context, property),
+              });
+            }
+          },
+          (error) => {
+            // TODO: handle other error
+            reportLmErrors(error as LmResponseError, property, context, (r) => {
+              context.reportDiagnostic({
+                target: property,
+                messageId: "errorOccurs",
+                format: {
+                  modelName: property.model?.name ?? "unknown",
+                  propName: property.name,
+                  error: `${inspect(r)}`,
+                },
+              });
             });
-          }
-        } catch (error) {
-          // TODO: handle other error
-          reportLmErrors(error as LmResponseError, property, context, (r) => {
-            context.reportDiagnostic({
-              target: property,
-              messageId: "errorOccurs",
-              format: {
-                modelName: property.model?.name ?? "unknown",
-                propName: property.name,
-                error: `${inspect(r)}`,
-              },
-            });
-          });
-          return;
-        }
+          },
+        );
       },
     };
   },

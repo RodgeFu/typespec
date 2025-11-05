@@ -28,7 +28,12 @@ type LinterLibraryInstance = { linter: LinterResolvedDefinition };
 export interface Linter {
   extendRuleSet(ruleSet: LinterRuleSet): Promise<readonly Diagnostic[]>;
   registerLinterLibrary(name: string, lib?: LinterLibraryInstance): void;
-  lint(): Promise<LinterResult>;
+  lint(options: LinterOptions): Promise<LinterResult>;
+}
+
+export interface LinterOptions {
+  /** Whether to run async linter rules or sync linter rules. */
+  asyncRules: boolean;
 }
 
 export interface LinterStats {
@@ -159,7 +164,7 @@ export function createLinter(
     return diagnostics.diagnostics;
   }
 
-  async function lint(): Promise<LinterResult> {
+  async function lint(options: LinterOptions): Promise<LinterResult> {
     const diagnostics = createDiagnosticCollector();
     const eventEmitter = new EventEmitter<SemanticNodeListener>();
     const stats: LinterStats = {
@@ -177,35 +182,36 @@ export function createLinter(
     const timer = startTimer();
     // Because we are hooking multiple callback to the event emitter and won't be able to return a result to the walker
     // so try to collect back all the promise and await them here explicitly
-    const promisesMap: Map<LinterRule<string, any>, Promise<any>[]> = new Map();
+    const allPromises: Promise<any>[] = [];
     for (const rule of enabledRules.values()) {
-      const createTiming = startTimer();
-      const listener = rule.create(createLinterRuleContext(program, rule, diagnostics));
-      stats.runtime.rules[rule.id] = createTiming.end();
-      const promises: Promise<any>[] = [];
-      promisesMap.set(rule, promises);
-      for (const [name, cb] of Object.entries(listener)) {
-        const timedCb = (...args: any[]) => {
-          const timer = startTimer();
-          const result = (cb as any)(...args);
-          if (isPromise(result)) {
-            const rr = result.then(() => {
+      if ((rule.async ?? false) === options.asyncRules) {
+        const createTiming = startTimer();
+        const listener = rule.create(createLinterRuleContext(program, rule, diagnostics));
+        stats.runtime.rules[rule.id] = createTiming.end();
+        for (const [name, cb] of Object.entries(listener)) {
+          const timedCb = (...args: any[]) => {
+            const timer = startTimer();
+            const result = (cb as any)(...args);
+            if (isPromise(result)) {
+              const rr = result.then(() => {
+                const duration = timer.end();
+                stats.runtime.rules[rule.id] += duration;
+              });
+              allPromises.push(rr);
+            } else {
               const duration = timer.end();
               stats.runtime.rules[rule.id] += duration;
-            });
-            promises.push(rr);
-          } else {
-            const duration = timer.end();
-            stats.runtime.rules[rule.id] += duration;
-          }
-        };
-        eventEmitter.on(name as any, timedCb);
+            }
+          };
+          eventEmitter.on(name as any, timedCb);
+        }
       }
     }
     navigateProgram(program, mapEventEmitterToNodeListener(eventEmitter));
-    for (const ps of promisesMap.values()) {
-      await Promise.all(ps);
+    if (allPromises.length > 0) {
+      await Promise.all(allPromises);
     }
+
     stats.runtime.total = timer.end();
     return { diagnostics: diagnostics.diagnostics, stats };
   }

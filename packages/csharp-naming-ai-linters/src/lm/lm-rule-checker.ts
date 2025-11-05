@@ -63,16 +63,32 @@ export class LmRuleChecker<
    * @param data The data to queue for checking
    * @returns A promise that resolves with the check result when batch processing completes
    */
-  async queueDataToCheck(data: dataT): Promise<z.infer<resultSchemaT>> {
+  queueDataToCheck(
+    data: dataT,
+    onResult: (result: z.infer<resultSchemaT>) => void,
+    onError: (error: any) => void,
+  ) {
     const keyedData = this.getDataWithKey(data);
     const found = this.deferredPromises.get(keyedData.key);
     if (found) {
-      return found.getPromise();
+      void found
+        .getPromise()
+        .then((r) => {
+          onResult(r);
+          return r;
+        })
+        .catch((e) => onError(e));
     } else {
       const deferred = new DeferredPromise<Keyed>();
       this.deferredPromises.set(keyedData.key, deferred);
       this.dataToCheck.push(keyedData);
-      return deferred.getPromise();
+      void deferred
+        .getPromise()
+        .then((r) => {
+          onResult(r);
+          return r;
+        })
+        .catch((e) => onError(e));
     }
   }
 
