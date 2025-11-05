@@ -1,6 +1,5 @@
 import { TextDocumentIdentifier } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { DeferredPromise } from "../utils/deferred-promise.js";
 import { ENABLE_UPDATE_MANAGER_LOGGING } from "./constants.js";
 import { ServerLog } from "./types.js";
 
