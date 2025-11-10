@@ -27,10 +27,10 @@ type LinterLibraryInstance = { linter: LinterResolvedDefinition };
 export interface Linter {
   extendRuleSet(ruleSet: LinterRuleSet): Promise<readonly Diagnostic[]>;
   registerLinterLibrary(name: string, lib?: LinterLibraryInstance): void;
-  lint(options: LinterOptions): Promise<LinterResult>;
+  lint(options: LintOptions): Promise<LinterResult>;
 }
 
-export interface LinterOptions {
+export interface LintOptions {
   /** Whether to run async linter rules or sync linter rules. */
   asyncRules: boolean;
 }
@@ -163,7 +163,7 @@ export function createLinter(
     return diagnostics.diagnostics;
   }
 
-  async function lint(options: LinterOptions): Promise<LinterResult> {
+  async function lint(options: LintOptions): Promise<LinterResult> {
     const diagnostics = createDiagnosticCollector();
     const eventEmitter = new EventEmitter<SemanticNodeListener>();
     const stats: LinterStats = {
@@ -179,8 +179,7 @@ export function createLinter(
     );
 
     const timer = startTimer();
-    // Because we are hooking multiple callback to the event emitter and won't be able to return a result to the walker
-    // so try to collect back all the promise and await them here explicitly
+    const exitCallbacks = [];
     const allPromises: Promise<any>[] = [];
     for (const rule of enabledRules.values()) {
       if ((rule.async ?? false) === options.asyncRules) {
@@ -192,6 +191,12 @@ export function createLinter(
             const timer = startTimer();
             const result = (cb as any)(...args);
             if (isPromise(result)) {
+              if (rule.async !== true) {
+                compilerAssert(
+                  false /* throw if this is not true */,
+                  `Linter rule "${rule.id}" is not marked as async but returned a promise from the "${name}" callback.`,
+                );
+              }
               const rr = result.then(() => {
                 const duration = timer.end();
                 stats.runtime.rules[rule.id] += duration;
@@ -202,11 +207,19 @@ export function createLinter(
               stats.runtime.rules[rule.id] += duration;
             }
           };
-          eventEmitter.on(name as any, timedCb);
+          if (name === "exit") {
+            // we need to trigger 'exit' callbacks explicitly after semantic walker is done
+            exitCallbacks.push(timedCb);
+          } else {
+            eventEmitter.on(name as any, timedCb);
+          }
         }
       }
     }
     navigateProgram(program, mapEventEmitterToNodeListener(eventEmitter));
+    for (const cb of exitCallbacks) {
+      cb(program);
+    }
     if (allPromises.length > 0) {
       await Promise.all(allPromises);
     }

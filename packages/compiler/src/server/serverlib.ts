@@ -162,7 +162,6 @@ export function createServer(
   );
 
   const updateManager = new UpdateManager("doc-update", log);
-
   const signatureHelpUpdateManager = new UpdateManager<CompileResult | undefined>(
     "signature-help",
     log,
@@ -183,8 +182,6 @@ export function createServer(
   let workspaceFolders: ServerWorkspaceFolder[] = [];
   let isInitialized = false;
   let pendingMessages: ServerLog[] = [];
-
-  let sId = 0;
 
   return {
     get pendingMessages() {
@@ -252,12 +249,6 @@ export function createServer(
       if (result && curVersion === updateManager.docChangedVersion) {
         await reportDiagnostics(result);
       }
-    });
-
-    signatureHelpUpdateManager.setCallback(async (updates, triggeredBy) => {
-      // for signature help, we should always compile against the document that triggered the request
-      // debounce can help to avoid the unnecessary triggering and compiler cache should be able to avoid the duplicates compile
-      return await compileInCoreMode(triggeredBy);
     });
 
     signatureHelpUpdateManager.setCallback(async (_updates, triggeredBy) => {

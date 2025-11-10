@@ -137,7 +137,7 @@ export function createCompileService({
     }
     const config = await getConfig(mainFile);
     configFilePath = config.filename;
-    //log({ level: "debug", message: `config resolved`, detail: config });
+    log({ level: "debug", message: `config resolved`, detail: config });
     const [optionsFromConfig, _] = resolveOptionsFromConfig(config, {
       cwd: getDirectoryPath(path),
     });

@@ -1,4 +1,3 @@
-import { isPromise } from "../utils/misc.js";
 import type { Program } from "./program.js";
 import { isTemplateDeclaration } from "./type-utils.js";
 import {
@@ -61,8 +60,6 @@ export function navigateProgram(
   context.emit("root", program);
 
   navigateNamespaceType(program.getGlobalNamespaceType(), context);
-
-  context.emit("exitRoot", program);
 }
 
 /**
@@ -151,16 +148,7 @@ function createNavigationContext(
 ): NavigationContext {
   return {
     visited: new Set(),
-    emit: (key, ...args) => {
-      const r = (listeners as any)[key]?.(...(args as [any]));
-      if (isPromise(r)) {
-        // We won't await here to keep the API sync which is good enough for some scenarios which don't require await
-        // TODO: should we make the whole API async which will be a breaking change?
-        return undefined;
-      } else {
-        return r;
-      }
-    },
+    emit: (key, ...args) => (listeners as any)[key]?.(...(args as [any])),
     options: computeOptions(options),
   };
 }
@@ -488,7 +476,6 @@ export class EventEmitter<T extends { [key: string]: (...args: any) => any }> {
 
 const eventNames: Array<keyof SemanticNodeListener> = [
   "root",
-  "exitRoot",
   "templateParameter",
   "exitTemplateParameter",
   "scalar",

@@ -250,14 +250,18 @@ export function createRuleWithLmRuleChecker<
   const P extends object,
   const R extends AnyZodObject,
 >(lmChecker: LmRuleChecker<P, R, T>, definition: LinterRuleDefinition<N, T>) {
-  const createFunc = (context: LinterRuleContext<T>): SemanticNodeListener => {
+  const createFunc = (
+    context: LinterRuleContext<T>,
+  ): SemanticNodeListener & {
+    exit?: (context: Program) => Promise<void | undefined>;
+  } => {
     const listener = definition.create(context);
     return {
       ...definition.create(context),
-      exitRoot: async (program) => {
+      exit: async (program) => {
         let result = undefined;
-        if (listener.exitRoot) {
-          result = await listener.exitRoot(program);
+        if (listener.exit) {
+          result = await listener.exit(program);
         }
         await lmChecker.checkAllData(context);
         return result;
@@ -266,6 +270,7 @@ export function createRuleWithLmRuleChecker<
   };
   return createRule({
     ...definition,
+    async: true,
     create: createFunc,
   });
 }
