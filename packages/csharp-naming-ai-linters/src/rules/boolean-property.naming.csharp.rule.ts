@@ -37,7 +37,7 @@ export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiC
   messages: {
     ...LmDiagnosticMessages,
     errorOccurs: paramMessage`CSharpNaming: Unexpected error occurs when checking boolean property '${"modelName"}.${"propName"}'. You may check console or VSCode TypeSpec Output logs for more details. Error: ${"error"}`,
-    verbNeeded: paramMessage`CSharpNaming(1): Boolean property '${"modelName"}.${"propName"}' should start with a verb. ${"newNameSuggestions"}`,
+    verbNeeded: paramMessage`CSharpNaming(2): Boolean property '${"modelName"}.${"propName"}' should start with a verb. ${"newNameSuggestions"}`,
   },
   create: (context) => {
     return {
