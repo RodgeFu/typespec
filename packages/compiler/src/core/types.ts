@@ -2338,22 +2338,22 @@ interface LinterRuleDefinitionBase<N extends string, DM extends DiagnosticMessag
 
 interface LinterRuleDefinitionSync<N extends string, DM extends DiagnosticMessages>
   extends LinterRuleDefinitionBase<N, DM> {
-  /** Sync linter rule where sync callback is expected for the 'exit' event */
+  /** Whether this is an async rule. Default is false */
   async?: false;
   /** Creator */
-  create(context: LinterRuleContext<DM>): SemanticNodeListener & {
-    exit?: (context: Program) => void | undefined;
-  };
+  create(
+    context: LinterRuleContext<DM>,
+  ): SemanticNodeListener & { exit?: (context: Program) => void | undefined };
 }
 
 interface LinterRuleDefinitionAsync<N extends string, DM extends DiagnosticMessages>
   extends LinterRuleDefinitionBase<N, DM> {
-  /** Async linter rule where async callback is expected for the 'exit' event */
+  /** Whether this is an async rule. Default is false */
   async: true;
   /** Creator */
-  create(context: LinterRuleContext<DM>): SemanticNodeListener & {
-    exit?: (context: Program) => Promise<void | undefined>;
-  };
+  create(
+    context: LinterRuleContext<DM>,
+  ): SemanticNodeListener & { exit?: (context: Program) => Promise<void | undefined> };
 }
 
 export type LinterRuleDefinition<N extends string, DM extends DiagnosticMessages> =

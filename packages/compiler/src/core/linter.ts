@@ -1,3 +1,4 @@
+import { isPromise } from "../utils/misc.js";
 import { DiagnosticCollector, compilerAssert, createDiagnosticCollector } from "./diagnostics.js";
 import { getLocationContext } from "./helpers/location-context.js";
 import { defineLinter } from "./library.js";
@@ -198,8 +199,8 @@ export function createLinter(
 
     const timer = startTimer();
     const exitCallbacks = [];
-    const allPromises: Promise<any>[] = [];
     const EXIT_EVENT_NAME = "exit";
+    const allPromises: Promise<any>[] = [];
     for (const rule of filteredRules.values()) {
       const createTiming = startTimer();
       const listener = rule.create(createLinterRuleContext(program, rule, diagnostics));
@@ -208,7 +209,11 @@ export function createLinter(
         const timedCb = (...args: any[]) => {
           const timer = startTimer();
           const result = (cb as any)(...args);
-          if (name === EXIT_EVENT_NAME && rule.async === true) {
+          if (name === EXIT_EVENT_NAME && isPromise(result)) {
+            compilerAssert(
+              rule.async,
+              `Linter rule "${rule.id}" is not marked as async but returned a promise from the "${name}" callback.`,
+            );
             const rr = result.finally(() => {
               const duration = timer.end();
               stats.runtime.rules[rule.id] += duration;

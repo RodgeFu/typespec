@@ -2,11 +2,11 @@ import { describe, it } from "vitest";
 
 import { createLinterRule, createTypeSpecLibrary } from "../../src/core/library.js";
 import { Linter, createLinter, resolveLinterDefinition } from "../../src/core/linter.js";
-import type {
-  Interface,
-  LibraryInstance,
-  LinterDefinition,
-  LinterRuleContext,
+import {
+  type Interface,
+  type LibraryInstance,
+  type LinterDefinition,
+  type LinterRuleContext,
 } from "../../src/index.js";
 import {
   createTestHost,
