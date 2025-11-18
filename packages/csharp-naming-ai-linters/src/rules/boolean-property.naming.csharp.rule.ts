@@ -4,6 +4,7 @@ import { inspect } from "util";
 import { LmRuleChecker } from "../lm/lm-rule-checker.js";
 import { reportLmErrors } from "../lm/lm-utils.js";
 import { defaultLmFamily, LmDiagnosticMessages, LmResponseError } from "../lm/types.js";
+import { logger } from "../log/logger.js";
 import {
   createRenameCodeFix,
   createRuleWithLmRuleChecker,
@@ -21,7 +22,7 @@ const aiChecker = new LmRuleChecker(
   [
     {
       role: "user",
-      message: `Check the given boolean property names which are in camel or pascal case, the name MUST start with a proper verb (i.e. 'Is', 'Has', 'Can', 'Use'...), otherwise suggest a few new name that starts with a verb (i.e. 'Is', 'Has', 'Can', 'Use'...) in pascal case.`,
+      message: `Check the given boolean property names which are in camel or pascal case, split the name into words and the first word MUST be a verb in English, otherwise suggest a few new name that starts with a verb (i.e. Enabled -> IsEnabled)`,
     },
   ],
   {
@@ -29,6 +30,8 @@ const aiChecker = new LmRuleChecker(
   },
   zRenameCheckResult,
 );
+
+const knownVerb = ["is", "has", "have", "can", "use", "should", "need"];
 
 export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiChecker, {
   name: ruleName,
@@ -68,21 +71,19 @@ export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiC
         const propNameWords = splitNameByUpperCase(propName);
         if (propNameWords.length > 0) {
           const firstWord = propNameWords[0].toLowerCase();
-          if (
-            firstWord === "is" ||
-            firstWord === "can" ||
-            firstWord === "has" ||
-            firstWord === "use"
-          ) {
+          if (knownVerb.includes(firstWord)) {
             // console.debug(
             //   `Skipping boolean property '${propName}' as it already starts with a common boolean verb: ${firstWord}`,
             // );
+            logger.warning(
+              `[Data]: known verb found for property - ${modelName}.${propName}: ${firstWord}`,
+            );
             return;
           }
         }
 
         const docString = getDoc(context.program, property);
-        const docMsg = `It is a property name '${propName}' in model '${modelName}'. ${docString && docString.length > 0 ? `The property description is: ${docString}` : ""}`;
+        const docMsg = `It is a property name '${propName}' in camel case in model '${modelName}'. ${docString && docString.length > 0 ? `The property description is: ${docString}` : ""}`;
         const description = `Check whether the original name is good and meets the requirements. ${docMsg}`;
         const data: RenameData = {
           originalName: propName,
@@ -93,6 +94,9 @@ export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiC
           data,
           (result) => {
             if (result.renameNeeded) {
+              logger.warning(
+                `[Data]: name without verb found for property - ${modelName}.${propName}`,
+              );
               const suggestedNames = result.suggestedNames;
               context.reportDiagnostic({
                 target: csharpClientNameDec?.args[0].node ?? property,
@@ -107,6 +111,10 @@ export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiC
                 },
                 codefixes: createRenameCodeFix(result, csharpClientNameDec, context, property),
               });
+            } else {
+              logger.warning(
+                `[Data]: boolean property name with verb not in known list found for - ${modelName}.${propName}`,
+              );
             }
           },
           (e) => {

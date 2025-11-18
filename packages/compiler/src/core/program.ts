@@ -297,6 +297,12 @@ async function createProgram(
   const resolver = (program.resolver = createResolver(program));
   runtimeStats.resolver = time(() => resolver.resolveProgram());
 
+  options.linterRuleSet ??= {};
+  options.linterRuleSet.enable ??= {};
+  options.linterRuleSet.enable["csharp-naming-ai-linters/boolean-property-starts-with-verb"] = true;
+  options.linterRuleSet.enable["csharp-naming-ai-linters/duration-with-unit"] = true;
+  options.linterRuleSet.enable["csharp-naming-ai-linters/no-interface"] = true;
+
   const linter = createLinter(program, (name) => loadLibrary(basedir, name));
   linter.registerLinterLibrary(builtInLinterLibraryName, createBuiltInLinterLibrary());
   if (options.linterRuleSet) {

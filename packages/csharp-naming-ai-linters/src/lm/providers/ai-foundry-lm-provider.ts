@@ -51,20 +51,26 @@ export class AiFoundryLmProvider implements LmProvider {
       deployment: this.connectionString.deployment,
     });
 
-    const result = await client.chat.completions.create({
-      messages: messages.map((m) => {
-        if (m.role === "user") {
-          return { role: "user", content: m.message };
-        } else if (m.role === "assist") {
-          return { role: "assistant", content: m.message };
-        } else {
-          logger.error(`Unsupported message role: ${m.role}, default to 'user' role`);
-          return { role: "user", content: m.message };
-        }
-      }),
-      // shall we use the options's model? or it's defined by the deployment already? needs to double check
-      model: "gpt-4o",
-    });
+    let result;
+    try {
+      result = await client.chat.completions.create({
+        messages: messages.map((m) => {
+          if (m.role === "user") {
+            return { role: "user", content: m.message };
+          } else if (m.role === "assist") {
+            return { role: "assistant", content: m.message };
+          } else {
+            logger.error(`Unsupported message role: ${m.role}, default to 'user' role`);
+            return { role: "user", content: m.message };
+          }
+        }),
+        // shall we use the options's model? or it's defined by the deployment already? needs to double check
+        model: "gpt-5",
+      });
+    } catch (err) {
+      logger.error("Error during chat completion:", err);
+      throw err;
+    }
 
     // take the first choice and return the content to keep things simple
     if (!result.choices || result.choices.length === 0) {

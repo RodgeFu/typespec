@@ -59,7 +59,7 @@
       "program": "${workspaceFolder}/packages/compiler/entrypoints/cli.js",
       "args": [
         "compile",
-        "C:/t/tspProj/p1/client.tsp",
+        "c:/t/tspProj/42/",
       ],
       "smartStep": true,
       "sourceMaps": true,
@@ -68,7 +68,10 @@
         "${workspaceFolder}/packages/*/dist/**/*.js",
         "${workspaceFolder}/packages/*/dist-dev/**/*.js"
       ],
-      "cwd": "C:/t/tspProj/p1",
+      "env": {
+        "LM_PROVIDER_CONNECTION_STRING": "type=AiFoundryLmProvider;serviceType=openai;endpoint=https://openai-shared.openai.azure.com/;apiVersion=2025-01-01-preview;deployment=gpt-5"
+      },
+      "cwd": "c:/t/tspProj/42",
       "presentation": {
         "order": 2
       }
