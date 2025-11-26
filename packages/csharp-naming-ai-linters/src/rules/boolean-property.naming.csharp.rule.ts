@@ -31,7 +31,24 @@ const aiChecker = new LmRuleChecker(
   zRenameCheckResult,
 );
 
-const knownVerb = ["is", "has", "have", "can", "use", "should", "need"];
+const knownVerb = [
+  "is",
+  "has",
+  "have",
+  "can",
+  "use",
+  "should",
+  "need",
+  "are",
+  "was",
+  "were",
+  "will",
+  "allow",
+  "include",
+  "exclude",
+  "enable",
+  "disable",
+];
 
 export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiChecker, {
   name: ruleName,
@@ -113,7 +130,7 @@ export const booleanPropertyStartsWithVerbRule = createRuleWithLmRuleChecker(aiC
               });
             } else {
               logger.warning(
-                `[Data]: boolean property name with verb not in known list found for - ${modelName}.${propName}`,
+                `[Data]: boolean property name with verb not in known list found for - ${modelName}.${propName}, unknown verb: ${propNameWords[0]}`,
               );
             }
           },
